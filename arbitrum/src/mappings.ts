@@ -158,9 +158,10 @@ import {
 // Strategy contract binding (for on-chain metadata reads: name, description)
 import { Strategy as StrategyContract } from "../generated/templates/StrategyRouterTemplate/Strategy"
 
-// VaultUpkeep Events
+// VaultUpkeep Events + Contract binding
 import {
-  UpkeepPerformed as UpkeepPerformedEvent
+  UpkeepPerformed as UpkeepPerformedEvent,
+  VaultUpkeep as VaultUpkeepContract
 } from "../generated/VaultUpkeep/VaultUpkeep"
 
 // GlobalConfig Events (Oracle Registry)
@@ -220,6 +221,21 @@ import {
 import {
   PeripheryUpkeepPerformed as PeripheryUpkeepPerformedEvt
 } from "../generated/PeripheryUpkeepAdapter/PeripheryUpkeepAdapter"
+
+// LendingStrategyUpkeep Events
+import {
+  StrategyAdded as LendingStrategyAddedEvent,
+  StrategyRemoved as LendingStrategyRemovedEvent,
+  StrategyToggled as LendingStrategyToggledEvent,
+  UpkeepPerformed as LendingUpkeepPerformedEvent,
+  UpkeepErrored as LendingUpkeepErroredEvent
+} from "../generated/LendingStrategyUpkeep/LendingStrategyUpkeep"
+
+// FeeCollectorUpkeep Events
+import {
+  DistributionTriggered as DistributionTriggeredEvent,
+  DistributionFailed as DistributionFailedEvent
+} from "../generated/FeeCollectorUpkeep/FeeCollectorUpkeep"
 
 // Schema Entities
 import {
@@ -294,7 +310,12 @@ import {
   PartnerEvent,
   DepositWithReferralEvent,
   ReferralBindingSkippedEvent,
-  PeripheryUpkeepEvent
+  PeripheryUpkeepEvent,
+  // Ops Deployment entities
+  VaultDeployment,
+  StrategyDeployment,
+  ProtocolDeployment,
+  StrategyRouterSeen
 } from "../generated/schema"
 
 // Template for dynamic vault indexing
@@ -339,7 +360,14 @@ import {
   setTransactionReceiver,
   getOrCreateClaimRequest,
   getOrCreateUser,
-  updateUserAggregates
+  updateUserAggregates,
+  snapshotVaultDayData,
+  syncVaultDeploymentFromVault,
+  getOrCreateVaultDeployment,
+  getOrCreateVaultUpkeepBinding,
+  getOrCreateStrategyDeployment,
+  getOrCreateProtocolDeployment,
+  getOrCreateStrategyUpkeepBinding
 } from "./helpers/entities"
 
 // =============================================================================
@@ -353,6 +381,18 @@ function getVaultId(vaultAddress: Address): string {
 
 function createEventId(txHash: Bytes, logIndex: BigInt): string {
   return txHash.toHex() + "-" + logIndex.toString()
+}
+
+// Create StrategyRouter template only if not already seen
+function ensureRouterTemplate(routerAddr: Address, timestamp: BigInt): void {
+  let routerId = routerAddr.toHexString()
+  let seen = StrategyRouterSeen.load(routerId)
+  if (seen == null) {
+    StrategyRouterTemplate.create(routerAddr)
+    seen = new StrategyRouterSeen(routerId)
+    seen.createdAt = timestamp
+    seen.save()
+  }
 }
 
 // Truncate bytes to max length (for harvest failure reasons to prevent storage bloat)
@@ -449,6 +489,16 @@ function handleVaultCreationInternal(
   vault.owner = ownerAddr
   vault.feeCollector = feeCollectorAddr
   vault.save()
+
+  // Create VaultDeployment
+  syncVaultDeploymentFromVault(vault, block.timestamp, block)
+
+  // Populate ProtocolDeployment.vaultFactory
+  let pd = getOrCreateProtocolDeployment(block.timestamp, block)
+  pd.vaultFactory = factoryAddr
+  pd.updatedAt = block.timestamp
+  pd.updatedAtBlock = block.number
+  pd.save()
 
   // Initialize token price for the asset
   if (assetAddr.notEqual(Address.zero())) {
@@ -1168,6 +1218,10 @@ export function handleCrystallized(event: CrystallizedEvent): void {
   crystal.blockNumber = event.block.number
   crystal.txHash = event.transaction.hash
   crystal.save()
+
+  // Refresh vault state and snapshot APY after crystallization
+  refreshVaultState(vault, event.block)
+  snapshotVaultDayData(vault, event.block.timestamp)
 }
 
 export function handlePerfFeeMinted(event: PerfFeeMintedEvent): void {
@@ -1328,6 +1382,10 @@ export function handleReserveTargetRestored(event: ReserveTargetRestoredEvent): 
   restore.blockNumber = event.block.number
   restore.txHash = event.transaction.hash
   restore.save()
+
+  // Refresh vault state and snapshot APY after reserve restore
+  refreshVaultState(vault, event.block)
+  snapshotVaultDayData(vault, event.block.timestamp)
 }
 
 export function handleEpochRolled(event: EpochRolledEvent): void {
@@ -1372,7 +1430,9 @@ export function handleVaultPpsSnapshot(event: VaultPpsSnapshotEvent): void {
   vault.totalSupply = event.params.totalSupply
   vault.sharePrice = event.params.pps
   vault.updatedAt = event.block.timestamp
-  vault.save()
+
+  // Snapshot APY using canonical PPS from event
+  snapshotVaultDayData(vault, event.block.timestamp)
 }
 
 export function handleNavSmoothUpdated(event: NavSmoothUpdatedEvent): void {
@@ -1518,6 +1578,8 @@ export function handleOwnershipTransferred(event: OwnershipTransferredEvent): vo
   vault.owner = event.params.newOwner
   vault.updatedAt = event.block.timestamp
   vault.save()
+
+  syncVaultDeploymentFromVault(vault, event.block.timestamp, event.block)
 }
 
 export function handleAuthorizedSealerSet(event: AuthorizedSealerSetEvent): void {
@@ -1568,6 +1630,13 @@ export function handleSystemSealed(event: SystemSealedEvent): void {
   sealEvent.blockNumber = event.block.number
   sealEvent.txHash = event.transaction.hash
   sealEvent.save()
+
+  // Mark VaultDeployment as sealed
+  let vd = getOrCreateVaultDeployment(vault, event.block.timestamp, event.block)
+  vd.sealed = true
+  vd.updatedAt = event.block.timestamp
+  vd.updatedAtBlock = event.block.number
+  vd.save()
 }
 
 // =============================================================================
@@ -1621,10 +1690,7 @@ export function handleRouterAccepted(event: RouterAcceptedEvent): void {
   timelockEvent.txHash = event.transaction.hash
   timelockEvent.save()
 
-  // Only create template if router address changed
-  if (vault.strategyRouter === null || !vault.strategyRouter!.equals(event.params.newRouter)) {
-    StrategyRouterTemplate.create(event.params.newRouter)
-  }
+  ensureRouterTemplate(event.params.newRouter, event.block.timestamp)
 
   vault.strategyRouter = event.params.newRouter
   vault.updatedAt = event.block.timestamp
@@ -1728,14 +1794,13 @@ export function handleStrategyRouterUpdated(event: StrategyRouterUpdatedEvent): 
   componentUpdate.txHash = event.transaction.hash
   componentUpdate.save()
 
-  // Only create template if router address changed
-  if (vault.strategyRouter === null || !vault.strategyRouter!.equals(event.params.newRouter)) {
-    StrategyRouterTemplate.create(event.params.newRouter)
-  }
+  ensureRouterTemplate(event.params.newRouter, event.block.timestamp)
 
   vault.strategyRouter = event.params.newRouter
   vault.updatedAt = event.block.timestamp
   vault.save()
+
+  syncVaultDeploymentFromVault(vault, event.block.timestamp, event.block)
 }
 
 export function handleBufferManagerUpdated(event: BufferManagerUpdatedEvent): void {
@@ -1759,6 +1824,8 @@ export function handleBufferManagerUpdated(event: BufferManagerUpdatedEvent): vo
   vault.bufferManager = event.params.newBuffer
   vault.updatedAt = event.block.timestamp
   vault.save()
+
+  syncVaultDeploymentFromVault(vault, event.block.timestamp, event.block)
 }
 
 export function handleParamsProviderUpdated(event: ParamsProviderUpdatedEvent): void {
@@ -1779,8 +1846,11 @@ export function handleParamsProviderUpdated(event: ParamsProviderUpdatedEvent): 
   componentUpdate.txHash = event.transaction.hash
   componentUpdate.save()
 
+  vault.paramsProvider = event.params.newParams
   vault.updatedAt = event.block.timestamp
   vault.save()
+
+  syncVaultDeploymentFromVault(vault, event.block.timestamp, event.block)
 }
 
 export function handleHealthRegistryUpdated(event: HealthRegistryUpdatedEvent): void {
@@ -1801,8 +1871,11 @@ export function handleHealthRegistryUpdated(event: HealthRegistryUpdatedEvent): 
   componentUpdate.txHash = event.transaction.hash
   componentUpdate.save()
 
+  vault.healthRegistry = event.params.newRegistry
   vault.updatedAt = event.block.timestamp
   vault.save()
+
+  syncVaultDeploymentFromVault(vault, event.block.timestamp, event.block)
 }
 
 export function handleIncentivesUpdated(event: IncentivesUpdatedEvent): void {
@@ -1826,6 +1899,8 @@ export function handleIncentivesUpdated(event: IncentivesUpdatedEvent): void {
   vault.incentives = event.params.newIncentives
   vault.updatedAt = event.block.timestamp
   vault.save()
+
+  syncVaultDeploymentFromVault(vault, event.block.timestamp, event.block)
 }
 
 export function handleFeeCollectorUpdated(event: FeeCollectorUpdatedEvent): void {
@@ -1849,6 +1924,8 @@ export function handleFeeCollectorUpdated(event: FeeCollectorUpdatedEvent): void
   vault.feeCollector = event.params.newCollector
   vault.updatedAt = event.block.timestamp
   vault.save()
+
+  syncVaultDeploymentFromVault(vault, event.block.timestamp, event.block)
 }
 
 export function handleVetoerUpdated(event: VetoerUpdatedEvent): void {
@@ -1869,8 +1946,11 @@ export function handleVetoerUpdated(event: VetoerUpdatedEvent): void {
   componentUpdate.txHash = event.transaction.hash
   componentUpdate.save()
 
+  vault.vetoer = event.params.newVetoer
   vault.updatedAt = event.block.timestamp
   vault.save()
+
+  syncVaultDeploymentFromVault(vault, event.block.timestamp, event.block)
 }
 
 // =============================================================================
@@ -2064,17 +2144,17 @@ export function handleEcosystemConfigured(event: EcosystemConfiguredEvent): void
   let vault = Vault.load(vaultId)
   if (vault == null) return
 
-  // Only create template if router address is new and non-zero
-  let routerChanged = vault.strategyRouter === null || !vault.strategyRouter!.equals(event.params.strategyRouter)
-
   vault.bufferManager = event.params.bufferManager
   vault.strategyRouter = event.params.strategyRouter
   vault.guardian = event.params.guardian
   vault.updatedAt = event.block.timestamp
   vault.save()
 
-  if (routerChanged && event.params.strategyRouter.notEqual(Address.zero())) {
-    StrategyRouterTemplate.create(event.params.strategyRouter)
+  syncVaultDeploymentFromVault(vault, event.block.timestamp, event.block)
+
+  // Create router template if non-zero
+  if (event.params.strategyRouter.notEqual(Address.zero())) {
+    ensureRouterTemplate(event.params.strategyRouter, event.block.timestamp)
   }
 }
 
@@ -2099,9 +2179,17 @@ export function handleStrategyRegistered(event: StrategyRegisteredEvent): void {
   // Read strategy metadata on-chain (name, description)
   let strategyContract = StrategyContract.bind(event.params.strat)
   let nameResult = strategyContract.try_name()
-  strategy.name = nameResult.reverted ? null : nameResult.value
+  if (nameResult.reverted) {
+    strategy.name = null
+  } else {
+    strategy.name = nameResult.value
+  }
   let descResult = strategyContract.try_description()
-  strategy.description = descResult.reverted ? null : descResult.value
+  if (descResult.reverted) {
+    strategy.description = null
+  } else {
+    strategy.description = descResult.value
+  }
 
   // Initialize harvest telemetry fields
   strategy.totalHarvestCount = ZERO_BI
@@ -2124,6 +2212,33 @@ export function handleStrategyRegistered(event: StrategyRegisteredEvent): void {
   routerEvent.blockNumber = event.block.number
   routerEvent.txHash = event.transaction.hash
   routerEvent.save()
+
+  // StrategyDeployment
+  let router = StrategyRouter.load(routerId)
+  if (router == null) return
+  let routerCore = router.core
+  if (routerCore === null) return
+  let vaultId2 = getVaultId(Address.fromBytes(routerCore))
+  let vault2 = Vault.load(vaultId2)
+  if (vault2 === null) return
+  let rawName = strategy.name
+  let stratName = ""
+  if (rawName !== null) {
+    stratName = rawName
+  }
+  let sd = getOrCreateStrategyDeployment(
+    vault2,
+    event.params.strat,
+    event.address,
+    stratName,
+    true,
+    event.params.priority,
+    event.params.weightBps,
+    event.block.timestamp,
+    event.block
+  )
+  sd.save()
+
 }
 
 export function handleStrategyToggled(event: StrategyToggledEvent): void {
@@ -2149,6 +2264,23 @@ export function handleStrategyToggled(event: StrategyToggledEvent): void {
   routerEvent.blockNumber = event.block.number
   routerEvent.txHash = event.transaction.hash
   routerEvent.save()
+
+  // Update StrategyDeployment
+  let routerT = StrategyRouter.load(routerId)
+  if (routerT === null) return
+  let routerCoreT = routerT.core
+  if (routerCoreT === null) return
+  let vaultIdT = getVaultId(Address.fromBytes(routerCoreT))
+  let vaultT = Vault.load(vaultIdT)
+  if (vaultT === null) return
+  let sdId = vaultT.id + "-" + event.params.strat.toHexString().toLowerCase()
+  let sd = StrategyDeployment.load(sdId)
+  if (sd !== null) {
+    sd.enabled = event.params.enabled
+    sd.updatedAt = event.block.timestamp
+    sd.updatedAtBlock = event.block.number
+    sd.save()
+  }
 }
 
 export function handleWeightsSet(event: WeightsSetEvent): void {
@@ -2162,7 +2294,7 @@ export function handleWeightsSet(event: WeightsSetEvent): void {
     let strategyId = routerId + "-" + strats[i].toHexString().toLowerCase()
     let strategy = VaultStrategy.load(strategyId)
     if (strategy != null) {
-      strategy.weightBps = BigInt.fromI32(weights[i]).toI32()
+      strategy.weightBps = weights[i]
       strategy.updatedAt = event.block.timestamp
       strategy.save()
     }
@@ -2177,6 +2309,25 @@ export function handleWeightsSet(event: WeightsSetEvent): void {
   routerEvent.blockNumber = event.block.number
   routerEvent.txHash = event.transaction.hash
   routerEvent.save()
+
+  // Update StrategyDeployment weights
+  let routerW = StrategyRouter.load(routerId)
+  if (routerW === null) return
+  let routerCoreW = routerW.core
+  if (routerCoreW === null) return
+  let vaultIdW = getVaultId(Address.fromBytes(routerCoreW))
+  let vaultW = Vault.load(vaultIdW)
+  if (vaultW === null) return
+  for (let j = 0; j < strats.length; j++) {
+    let sdIdW = vaultW.id + "-" + strats[j].toHexString().toLowerCase()
+    let sdW = StrategyDeployment.load(sdIdW)
+    if (sdW !== null) {
+      sdW.weightBps = weights[j]
+      sdW.updatedAt = event.block.timestamp
+      sdW.updatedAtBlock = event.block.number
+      sdW.save()
+    }
+  }
 }
 
 export function handleIntakeModeSet(event: IntakeModeSetEvent): void {
@@ -2763,6 +2914,8 @@ export function handleHealthRegistrySetInVault(event: HealthRegistrySetInVaultEv
     vault.healthRegistry = event.params.registry
     vault.updatedAt = event.block.timestamp
     vault.save()
+
+    syncVaultDeploymentFromVault(vault, event.block.timestamp, event.block)
   }
 
   let update = new ComponentUpdate(id)
@@ -2789,6 +2942,15 @@ export function handleOracleSet(event: OracleSetEvent): void {
   evt.blockNumber = event.block.number
   evt.txHash = event.transaction.hash
   evt.save()
+
+  let vault = Vault.load(vaultId)
+  if (vault != null) {
+    vault.oracle = event.params.oracle
+    vault.updatedAt = event.block.timestamp
+    vault.save()
+
+    syncVaultDeploymentFromVault(vault, event.block.timestamp, event.block)
+  }
 }
 
 export function handleBatchGuardrailsUpdated(event: BatchGuardrailsUpdatedEvent): void {
@@ -2903,6 +3065,17 @@ export function handleVaultRoutingConfigured(event: VaultRoutingConfiguredEvent)
   evt.blockNumber = event.block.number
   evt.txHash = event.transaction.hash
   evt.save()
+
+  // Update VaultDeployment with routing modules
+  let vault = Vault.load(vaultId)
+  if (vault != null) {
+    let vd = getOrCreateVaultDeployment(vault, event.block.timestamp, event.block)
+    vd.queueModule = event.params.queueModule
+    vd.adminModule = event.params.adminModule
+    vd.updatedAt = event.block.timestamp
+    vd.updatedAtBlock = event.block.number
+    vd.save()
+  }
 }
 
 // =============================================================================
@@ -2924,6 +3097,28 @@ export function handleUpkeepPerformed(event: UpkeepPerformedEvent): void {
   action.txHash = event.transaction.hash
 
   action.save()
+
+  // Create VaultUpkeepBinding by resolving the vault via try_core()
+  let upkeepContract = VaultUpkeepContract.bind(event.address)
+  let coreResult = upkeepContract.try_core()
+  if (!coreResult.reverted) {
+    let vaultAddr = coreResult.value
+    let vaultId = getVaultId(vaultAddr)
+    let vault = Vault.load(vaultId)
+    if (vault != null) {
+      let binding = getOrCreateVaultUpkeepBinding(
+        event.address, vault, event.block.timestamp, event.block
+      )
+      binding.save()
+
+      // Also set vaultUpkeep on VaultDeployment
+      let vd = getOrCreateVaultDeployment(vault, event.block.timestamp, event.block)
+      vd.vaultUpkeep = event.address
+      vd.updatedAt = event.block.timestamp
+      vd.updatedAtBlock = event.block.number
+      vd.save()
+    }
+  }
 }
 
 // =============================================================================
@@ -2946,6 +3141,13 @@ export function handleDefaultOracleConfigSet(event: DefaultOracleConfigSetEvent)
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // Populate ProtocolDeployment.globalConfig
+  let pd = getOrCreateProtocolDeployment(event.block.timestamp, event.block)
+  pd.globalConfig = event.address
+  pd.updatedAt = event.block.timestamp
+  pd.updatedAtBlock = event.block.number
+  pd.save()
 }
 
 export function handleAssetOracleConfigSet(event: AssetOracleConfigSetEvent): void {
@@ -3004,6 +3206,13 @@ export function handleOpsSplitExecuted(event: OpsSplitExecutedEvent): void {
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // Populate ProtocolDeployment.opsCollector
+  let pd = getOrCreateProtocolDeployment(event.block.timestamp, event.block)
+  pd.opsCollector = event.address
+  pd.updatedAt = event.block.timestamp
+  pd.updatedAtBlock = event.block.number
+  pd.save()
 }
 
 export function handleSplitParamsUpdated(event: SplitParamsUpdatedEvent): void {
@@ -3072,6 +3281,13 @@ export function handleRedeemed(event: RedeemedEvent): void {
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // Populate ProtocolDeployment.feeDistributor
+  let pd = getOrCreateProtocolDeployment(event.block.timestamp, event.block)
+  pd.feeDistributor = event.address
+  pd.updatedAt = event.block.timestamp
+  pd.updatedAtBlock = event.block.number
+  pd.save()
 }
 
 export function handleEpochFunded(event: EpochFundedEvt): void {
@@ -3151,6 +3367,13 @@ export function handleRootPublished(event: RootPublishedEvent): void {
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // Populate ProtocolDeployment.epochPayout
+  let pd = getOrCreateProtocolDeployment(event.block.timestamp, event.block)
+  pd.epochPayout = event.address
+  pd.updatedAt = event.block.timestamp
+  pd.updatedAtBlock = event.block.number
+  pd.save()
 }
 
 export function handleClaimed(event: ClaimedEvent): void {
@@ -3189,6 +3412,13 @@ export function handleReferralBound(event: ReferralBoundEvt): void {
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // Populate ProtocolDeployment.referralBinding
+  let pd = getOrCreateProtocolDeployment(event.block.timestamp, event.block)
+  pd.referralBinding = event.address
+  pd.updatedAt = event.block.timestamp
+  pd.updatedAtBlock = event.block.number
+  pd.save()
 }
 
 export function handleRouterAuthorizationUpdated(event: RouterAuthorizationUpdatedEvent): void {
@@ -3228,6 +3458,13 @@ export function handlePartnerRegistered(event: PartnerRegisteredEvent): void {
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // Populate ProtocolDeployment.partnerRegistry
+  let pd = getOrCreateProtocolDeployment(event.block.timestamp, event.block)
+  pd.partnerRegistry = event.address
+  pd.updatedAt = event.block.timestamp
+  pd.updatedAtBlock = event.block.number
+  pd.save()
 }
 
 export function handlePartnerUpdated(event: PartnerUpdatedEvent): void {
@@ -3289,6 +3526,13 @@ export function handleDepositWithReferral(event: DepositWithReferralEvt): void {
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // Populate ProtocolDeployment.depositRouter
+  let pd = getOrCreateProtocolDeployment(event.block.timestamp, event.block)
+  pd.depositRouter = event.address
+  pd.updatedAt = event.block.timestamp
+  pd.updatedAtBlock = event.block.number
+  pd.save()
 }
 
 export function handleReferralBindingSkipped(event: ReferralBindingSkippedEvt): void {
@@ -3334,4 +3578,141 @@ export function handlePeripheryUpkeepPerformed(event: PeripheryUpkeepPerformedEv
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // Populate ProtocolDeployment.peripheryUpkeep
+  let pd = getOrCreateProtocolDeployment(event.block.timestamp, event.block)
+  pd.peripheryUpkeep = event.address
+  pd.updatedAt = event.block.timestamp
+  pd.updatedAtBlock = event.block.number
+  pd.save()
+}
+
+// =============================================================================
+// LENDING STRATEGY UPKEEP EVENT HANDLERS
+// =============================================================================
+
+export function handleLendingStrategyAdded(event: LendingStrategyAddedEvent): void {
+  let chainId = getChainIdFromNetwork(dataSource.network())
+
+  let binding = getOrCreateStrategyUpkeepBinding(
+    event.address,
+    event.params.strategy,
+    chainId,
+    "lending",
+    event.block.timestamp,
+    event.block
+  )
+  binding.enabled = true
+  binding.save()
+}
+
+export function handleLendingStrategyRemoved(event: LendingStrategyRemovedEvent): void {
+  let chainId = getChainIdFromNetwork(dataSource.network())
+
+  let binding = getOrCreateStrategyUpkeepBinding(
+    event.address,
+    event.params.strategy,
+    chainId,
+    "lending",
+    event.block.timestamp,
+    event.block
+  )
+  binding.enabled = false
+  binding.save()
+}
+
+export function handleLendingStrategyToggled(event: LendingStrategyToggledEvent): void {
+  let chainId = getChainIdFromNetwork(dataSource.network())
+
+  let binding = getOrCreateStrategyUpkeepBinding(
+    event.address,
+    event.params.strategy,
+    chainId,
+    "lending",
+    event.block.timestamp,
+    event.block
+  )
+  binding.enabled = event.params.enabled
+  binding.save()
+}
+
+export function handleLendingUpkeepPerformed(event: LendingUpkeepPerformedEvent): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let action = new UpkeepAction(id)
+
+  action.chainId = getChainIdFromNetwork(dataSource.network())
+  action.upkeep = event.address
+  action.op = event.params.op
+  action.arg = ZERO_BI
+  action.success = true
+
+  action.timestamp = event.block.timestamp
+  action.blockNumber = event.block.number
+  action.txHash = event.transaction.hash
+
+  action.save()
+}
+
+export function handleLendingUpkeepErrored(event: LendingUpkeepErroredEvent): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let action = new UpkeepAction(id)
+
+  action.chainId = getChainIdFromNetwork(dataSource.network())
+  action.upkeep = event.address
+  action.op = event.params.op
+  action.arg = ZERO_BI
+  action.success = false
+
+  action.timestamp = event.block.timestamp
+  action.blockNumber = event.block.number
+  action.txHash = event.transaction.hash
+
+  action.save()
+}
+
+// =============================================================================
+// FEE COLLECTOR UPKEEP EVENT HANDLERS
+// =============================================================================
+
+export function handleFeeDistributionTriggered(event: DistributionTriggeredEvent): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let action = new UpkeepAction(id)
+
+  let chainId = getChainIdFromNetwork(dataSource.network())
+  action.chainId = chainId
+  action.upkeep = event.address
+  action.op = 0 // single op type for FeeCollector
+  action.arg = ZERO_BI
+  action.success = true
+
+  action.timestamp = event.block.timestamp
+  action.blockNumber = event.block.number
+  action.txHash = event.transaction.hash
+
+  action.save()
+
+  // Set feeCollectorUpkeep on ProtocolDeployment
+  let pd = getOrCreateProtocolDeployment(event.block.timestamp, event.block)
+  pd.feeCollectorUpkeep = event.address
+  pd.updatedAt = event.block.timestamp
+  pd.updatedAtBlock = event.block.number
+  pd.save()
+}
+
+export function handleFeeDistributionFailed(event: DistributionFailedEvent): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let action = new UpkeepAction(id)
+
+  let chainId = getChainIdFromNetwork(dataSource.network())
+  action.chainId = chainId
+  action.upkeep = event.address
+  action.op = 0
+  action.arg = ZERO_BI
+  action.success = false
+
+  action.timestamp = event.block.timestamp
+  action.blockNumber = event.block.number
+  action.txHash = event.transaction.hash
+
+  action.save()
 }

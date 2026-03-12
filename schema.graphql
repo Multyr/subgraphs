@@ -145,6 +145,11 @@ type Vault @entity {
   positions: [UserVaultPosition!]! @derivedFrom(field: "vault")
   transactions: [Transaction!]! @derivedFrom(field: "vault")
   strategies: [VaultStrategy!]! @derivedFrom(field: "vault")
+
+  # Ops deployment derived relations
+  deployment: VaultDeployment @derivedFrom(field: "vault")
+  strategyDeployments: [StrategyDeployment!]! @derivedFrom(field: "vault")
+  upkeepBindings: [VaultUpkeepBinding!]! @derivedFrom(field: "vault")
 }
 
 # Vault daily snapshot - historical performance tracking. ID: vaultId-dayId
@@ -1424,4 +1429,107 @@ type PeripheryUpkeepEvent @entity {
   timestamp: BigInt!
   blockNumber: BigInt!
   txHash: Bytes!
+}
+
+# =============================================================================
+# OPS DEPLOYMENT WIRING ENTITIES
+# =============================================================================
+# These entities provide the ops dashboard with dynamic discovery of
+# protocol infrastructure, vault wiring, and strategy topology.
+# =============================================================================
+
+# Protocol-level shared components per chain. ID: "protocol-{chainId}"
+type ProtocolDeployment @entity {
+  id: ID!
+  chainId: Int!
+  vaultFactory: Bytes
+  globalConfig: Bytes
+  depositRouter: Bytes
+  referralBinding: Bytes
+  opsCollector: Bytes
+  feeDistributor: Bytes
+  epochPayout: Bytes
+  peripheryUpkeep: Bytes
+  feeCollectorUpkeep: Bytes
+  partnerRegistry: Bytes
+  updatedAt: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+# Per-vault operational wiring. ID: vault.id (= vaultAddress-chainId)
+type VaultDeployment @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+  coreVault: Bytes!
+  bufferManager: Bytes
+  queueModule: Bytes
+  adminModule: Bytes
+  strategyRouter: Bytes
+  healthRegistry: Bytes
+  feeCollector: Bytes
+  oracle: Bytes
+  owner: Bytes
+  guardian: Bytes
+  vetoer: Bytes
+  paramsProvider: Bytes
+  incentives: Bytes
+  vaultUpkeep: Bytes
+  sealed: Boolean!
+  protocolDeployment: ProtocolDeployment
+  updatedAt: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+# Per-strategy operational wiring. ID: vaultId-strategyAddress
+type StrategyDeployment @entity {
+  id: ID!
+  vault: Vault!
+  vaultDeployment: VaultDeployment
+  chainId: Int!
+  strategyAddress: Bytes!
+  strategyRouter: Bytes
+  name: String
+  enabled: Boolean!
+  priority: Int!
+  weightBps: Int!
+  totalAssets: BigInt
+  strategyUpkeep: Bytes
+  upkeepKind: String               # "lending" | "multiply" | "custom"
+  updatedAt: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+# VaultUpkeep -> Vault binding. ID: upkeepAddress-vaultAddress-chainId
+type VaultUpkeepBinding @entity {
+  id: ID!
+  upkeep: Bytes!
+  vault: Vault!
+  vaultDeployment: VaultDeployment
+  chainId: Int!
+  createdAt: BigInt!
+  updatedAt: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+# Strategy upkeep -> strategy binding (NOT for FeeCollectorUpkeep). ID: upkeepAddress-strategyAddress-chainId
+type StrategyUpkeepBinding @entity {
+  id: ID!
+  upkeep: Bytes!
+  strategy: Bytes!
+  vault: Vault
+  strategyDeployment: StrategyDeployment
+  chainId: Int!
+  upkeepType: String!              # "lending" | "multiply" | "custom"
+  enabled: Boolean!
+  createdAt: BigInt!
+  updatedAt: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+# Guard entity to track already-created StrategyRouter datasource templates
+# Avoids nullable Bytes comparison that crashes AssemblyScript
+type StrategyRouterSeen @entity {
+  id: ID!                          # routerAddress hex
+  createdAt: BigInt!
 }

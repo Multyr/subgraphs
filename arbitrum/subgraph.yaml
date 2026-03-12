@@ -276,6 +276,64 @@ dataSources:
           handler: handlePeripheryUpkeepPerformed
       file: ./src/mappings.ts
 
+  # =========================================================================
+  # STRATEGY & FEE UPKEEP AUTOMATION
+  # =========================================================================
+
+  - kind: ethereum/contract
+    name: LendingStrategyUpkeep
+    network: arbitrum-one
+    source:
+      address: "0x2D2B187FA2895f7f860838E8427bd91558E287B5"
+      abi: LendingStrategyUpkeep
+      startBlock: 440464138
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - UpkeepAction
+        - StrategyUpkeepBinding
+      abis:
+        - name: LendingStrategyUpkeep
+          file: ./abis/LendingStrategyUpkeep.json
+      eventHandlers:
+        - event: StrategyAdded(indexed address)
+          handler: handleLendingStrategyAdded
+        - event: StrategyRemoved(indexed address)
+          handler: handleLendingStrategyRemoved
+        - event: StrategyToggled(indexed address,bool)
+          handler: handleLendingStrategyToggled
+        - event: UpkeepPerformed(indexed uint8,indexed address,uint256)
+          handler: handleLendingUpkeepPerformed
+        - event: UpkeepErrored(indexed uint8,indexed address,bytes)
+          handler: handleLendingUpkeepErrored
+      file: ./src/mappings.ts
+
+  - kind: ethereum/contract
+    name: FeeCollectorUpkeep
+    network: arbitrum-one
+    source:
+      address: "0x5d4e0b9aa48234bc2cb10b0a2f97430a4a9a8ea8"
+      abi: FeeCollectorUpkeep
+      startBlock: 440478600
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - UpkeepAction
+        - ProtocolDeployment
+      abis:
+        - name: FeeCollectorUpkeep
+          file: ./abis/FeeCollectorUpkeep.json
+      eventHandlers:
+        - event: DistributionTriggered(uint256,uint256)
+          handler: handleFeeDistributionTriggered
+        - event: DistributionFailed(bytes)
+          handler: handleFeeDistributionFailed
+      file: ./src/mappings.ts
+
 templates:
   - kind: ethereum/contract
     name: VaultTemplate

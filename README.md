@@ -693,6 +693,38 @@ apy7d = avg(apy[day-1], apy[day-2], ..., apy[day-7])
 
 ---
 
+# Development Guidelines
+
+## AssemblyScript-safe coding style
+
+The Graph's AssemblyScript compiler (0.19.x) has internal bugs around nullable
+types that cause silent crashes with no line-number diagnostics.  All code in
+`mappings.ts` and `entities.ts` **must** follow these rules:
+
+1. **Use `=== null` / `!== null`** — never `== null` / `!= null` on nullable
+   value types (`Bytes | null`, `BigInt | null`, etc.)
+
+2. **No compound nullable checks** — never combine a null guard with a non-null
+   assertion in the same `if` expression
+   (`if (x === null || !x!.equals(y))` crashes)
+
+3. **No ternaries with `null` branches** — use explicit `if/else` instead of
+   `condition ? null : value`
+
+4. **No non-null assertions inside boolean expressions** — extract to a local
+   variable first, then test
+
+5. **Guard template creation with a seen-entity** — do not call
+   `Template.create()` blindly; use a `*Seen` entity to deduplicate
+
+6. **Early return after null checks** — keep the happy path flat, avoid deep
+   nesting with `!` assertions
+
+See [`docs/assemblyscript-compiler-gotchas.md`](docs/assemblyscript-compiler-gotchas.md) for
+detailed examples, crash patterns, and diagnosis tips.
+
+---
+
 # License
 
 MIT
