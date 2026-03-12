@@ -1,0 +1,1427 @@
+# =============================================================================
+# MULTYR VAULT SUBGRAPH SCHEMA v2.0
+# =============================================================================
+# Full-featured schema for DApp UI - replicates Morpho Blue GraphQL capabilities
+# All numeric values are in wei (BigInt) unless specified as BigDecimal
+# Standard: sharePrice and prices use 1e18 scaling
+# =============================================================================
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+# Transaction types for vault operations
+enum TransactionType {
+  DEPOSIT
+  WITHDRAW
+  FORCE_WITHDRAW
+  TRANSFER
+  CLAIM
+  CLAIM_REQUEST
+  CLAIM_CANCEL
+}
+
+# Vault status
+enum VaultStatus {
+  ACTIVE
+  PAUSED
+  DEPRECATED
+}
+
+# Strategy health state
+enum StrategyState {
+  OK
+  DEGRADED
+  BROKEN
+}
+
+# Price status for USD values
+enum PriceStatus {
+  VALID           # Price from Chainlink oracle
+  STALE           # Price older than threshold (e.g., 1 hour)
+  FALLBACK        # Using hardcoded fallback (1.0 for stablecoins)
+  MISSING         # No price source available - USD values are 0
+}
+
+# =============================================================================
+# CORE ENTITIES
+# =============================================================================
+
+# Protocol-wide singleton for global stats. ID: "protocol-{chainId}"
+type Protocol @entity {
+  id: ID!
+  chainId: Int!
+  factoryAddress: Bytes!
+  totalVaults: Int!
+  totalTvlUsd: BigDecimal!
+  totalUsers: Int!
+  updatedAt: BigInt!
+}
+
+# Vault Factory - tracks all deployed vaults. ID: factoryAddress-chainId (lowercase)
+type VaultFactory @entity {
+  id: ID!
+  address: Bytes!
+  chainId: Int!
+  vaultCount: Int!
+  totalTvlUsd: BigDecimal!
+  vaults: [Vault!]! @derivedFrom(field: "factory")
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+}
+
+# ERC-4626 Vault - main vault entity with current state. ID: vaultAddress-chainId (lowercase)
+type Vault @entity {
+  id: ID!
+  factory: VaultFactory
+
+  # Identity
+  address: Bytes!
+  chainId: Int!
+
+  # ERC-20 / ERC-4626 Metadata
+  name: String!
+  symbol: String!
+  decimals: Int!
+  asset: Bytes!
+  assetSymbol: String!
+  assetDecimals: Int!
+
+  # Creation metadata
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+  createdTxHash: Bytes!
+  creator: Bytes
+
+  # Current state (updated on every tx)
+  totalAssets: BigInt!
+  totalSupply: BigInt!
+  sharePrice: BigInt!
+
+  # USD values (updated via oracle or config)
+  tvlUsd: BigDecimal!
+  assetPriceUsd: BigDecimal!
+  priceStatus: PriceStatus!
+
+  # Performance metrics (computed from day data)
+  apy1d: BigDecimal!
+  apy7d: BigDecimal!
+  apy30d: BigDecimal!
+
+  # Vault configuration
+  depositFeeBps: Int!
+  withdrawFeeBps: Int!
+  immediateExitPenaltyBps: Int!
+  forceExitPenaltyBps: Int!
+
+  # Status flags
+  status: VaultStatus!
+  isActive: Boolean!
+  depositsEnabled: Boolean!
+  withdrawalsEnabled: Boolean!
+
+  # Components (addresses)
+  bufferManager: Bytes
+  strategyRouter: Bytes
+  healthRegistry: Bytes
+  paramsProvider: Bytes
+  incentives: Bytes
+  feeCollector: Bytes
+  guardian: Bytes
+  vetoer: Bytes
+  oracle: Bytes
+  owner: Bytes
+
+  # Statistics
+  totalDeposits: BigInt!
+  totalWithdrawals: BigInt!
+  totalUsers: Int!
+  transactionCount: Int!
+
+  updatedAt: BigInt!
+
+  # Derived relations
+  dayData: [VaultDayData!]! @derivedFrom(field: "vault")
+  positions: [UserVaultPosition!]! @derivedFrom(field: "vault")
+  transactions: [Transaction!]! @derivedFrom(field: "vault")
+  strategies: [VaultStrategy!]! @derivedFrom(field: "vault")
+}
+
+# Vault daily snapshot - historical performance tracking. ID: vaultId-dayId
+type VaultDayData @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  date: Int!
+  dateTimestamp: BigInt!
+
+  # State snapshot
+  totalAssets: BigInt!
+  totalSupply: BigInt!
+  sharePrice: BigInt!
+
+  # USD values
+  tvlUsd: BigDecimal!
+  assetPriceUsd: BigDecimal!
+
+  # Performance
+  dailyReturn: BigDecimal!
+  apy: BigDecimal!
+
+  # Volume
+  depositsAssets: BigInt!
+  depositsUsd: BigDecimal!
+  withdrawalsAssets: BigInt!
+  withdrawalsUsd: BigDecimal!
+  netFlowAssets: BigInt!
+  netFlowUsd: BigDecimal!
+
+  # Counts
+  depositCount: Int!
+  withdrawCount: Int!
+  uniqueUsers: Int!
+}
+
+# =============================================================================
+# USER POSITION ENTITIES
+# =============================================================================
+
+# User position in a vault - aggregated state with FIFO cost basis. ID: vaultId-userAddress (lowercase)
+type UserVaultPosition @entity {
+  id: ID!
+  user: Bytes!
+  vault: Vault!
+  chainId: Int!
+
+  # Current holdings
+  shares: BigInt!
+  assets: BigInt!
+  assetsUsd: BigDecimal!
+
+  # Cost basis tracking (FIFO)
+  netDepositedAssets: BigInt!
+  netDepositedUsd: BigDecimal!
+  costBasisFifoAssets: BigInt!
+  costBasisFifoUsd: BigDecimal!
+
+  # P&L tracking
+  realizedPnlAssets: BigInt!
+  realizedPnlUsd: BigDecimal!
+  unrealizedPnlAssets: BigInt!
+  unrealizedPnlUsd: BigDecimal!
+
+  # Earned (total gains)
+  earnedAssets: BigInt!
+  earnedUsd: BigDecimal!
+
+  # Cumulative stats
+  totalDepositedAssets: BigInt!
+  totalDepositedUsd: BigDecimal!
+  totalWithdrawnAssets: BigInt!
+  totalWithdrawnUsd: BigDecimal!
+
+  # Timestamps
+  createdAt: BigInt!
+  updatedAt: BigInt!
+  lastDepositAt: BigInt
+  lastWithdrawAt: BigInt
+
+  # Transaction count
+  depositCount: Int!
+  withdrawCount: Int!
+
+  # FIFO lots for accurate cost basis
+  lots: [PositionLot!]! @derivedFrom(field: "position")
+  dayData: [UserPositionDayData!]! @derivedFrom(field: "position")
+}
+
+# Position lot for FIFO cost basis tracking. ID: positionId-lotIndex
+type PositionLot @entity {
+  id: ID!
+  position: UserVaultPosition!
+  lotIndex: Int!
+
+  # Original deposit
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+
+  sharesBought: BigInt!
+  assetsCost: BigInt!
+  usdCost: BigDecimal!
+  sharePriceAtBuy: BigInt!
+  assetPriceUsdAtBuy: BigDecimal!
+
+  # Current state
+  sharesRemaining: BigInt!
+
+  isFullyConsumed: Boolean!
+}
+
+# User position daily snapshot. ID: positionId-dayId
+type UserPositionDayData @entity {
+  id: ID!
+  position: UserVaultPosition!
+  vault: Vault!
+  user: Bytes!
+  chainId: Int!
+
+  date: Int!
+  dateTimestamp: BigInt!
+
+  # Snapshot
+  shares: BigInt!
+  assets: BigInt!
+  assetsUsd: BigDecimal!
+  sharePrice: BigInt!
+  assetPriceUsd: BigDecimal!
+
+  # Cumulative at end of day
+  totalDepositedAssets: BigInt!
+  totalWithdrawnAssets: BigInt!
+  realizedPnlAssets: BigInt!
+  unrealizedPnlAssets: BigInt!
+  earnedAssets: BigInt!
+}
+
+# =============================================================================
+# TRANSACTION ENTITIES
+# =============================================================================
+
+# Transaction - individual vault operation with full audit trail. ID: txHash-logIndex
+type Transaction @entity {
+  id: ID!
+  hash: Bytes!
+  logIndex: BigInt!
+
+  vault: Vault!
+  user: Bytes!
+  chainId: Int!
+
+  type: TransactionType!
+
+  # Amounts
+  shares: BigInt!
+  assets: BigInt!
+  assetsUsd: BigDecimal!
+
+  # For transfers
+  from: Bytes
+  to: Bytes
+  receiver: Bytes
+
+  # For claims
+  claimId: BigInt
+
+  # Metadata
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  gasUsed: BigInt
+  gasPrice: BigInt
+
+  # Price at tx time
+  sharePrice: BigInt!
+  assetPriceUsd: BigDecimal!
+}
+
+# Pending claim request. ID: vaultId-claimId
+type ClaimRequest @entity {
+  id: ID!
+  vault: Vault!
+  user: Bytes!
+  chainId: Int!
+
+  claimId: BigInt!
+  shares: BigInt!
+  assetsEstimated: BigInt!
+
+  isImmediate: Boolean!
+  status: String!
+
+  requestedAt: BigInt!
+  requestTxHash: Bytes!
+
+  settledAt: BigInt
+  settleTxHash: Bytes
+  assetsReceived: BigInt
+
+  cancelledAt: BigInt
+  cancelTxHash: Bytes
+}
+
+# Force withdraw event - guaranteed exit operation. ID: txHash-logIndex
+type ForceWithdrawEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  caller: Bytes!
+  owner: Bytes!
+  receiver: Bytes!
+  assets: BigInt!
+  sharesSpent: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# =============================================================================
+# STRATEGY ENTITIES
+# =============================================================================
+
+# Strategy registered with vault's router. ID: routerAddress-chainId-strategyAddress
+type VaultStrategy @entity {
+  id: ID!
+  vault: Vault
+  router: StrategyRouter
+  strategy: Bytes!
+  chainId: Int!
+
+  # Metadata (read from strategy contract)
+  name: String
+  description: String
+
+  # Config
+  priority: Int!
+  weightBps: Int!
+  enabled: Boolean!
+
+  # Current state
+  totalAssets: BigInt!
+  lastHarvestAt: BigInt
+
+  # Harvest telemetry (PR-B)
+  lastHarvestPnl: BigInt
+  lastHarvestRealized: BigInt
+  lastHarvestTimestamp: BigInt
+  lastHarvestFailed: Boolean
+  totalHarvestCount: BigInt!
+  totalHarvestFailCount: BigInt!
+
+  createdAt: BigInt!
+  updatedAt: BigInt!
+}
+
+# =============================================================================
+# PRICING ENTITIES
+# =============================================================================
+
+# Token price tracking. ID: tokenAddress-chainId
+type TokenPrice @entity {
+  id: ID!
+  token: Bytes!
+  chainId: Int!
+  symbol: String!
+  decimals: Int!
+
+  priceUsd: BigDecimal!
+  source: String!
+  status: PriceStatus!
+
+  updatedAt: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+# Chainlink oracle configuration. ID: tokenAddress-chainId
+type ChainlinkFeed @entity {
+  id: ID!
+  token: Bytes!
+  chainId: Int!
+  feedAddress: Bytes!
+  decimals: Int!
+  description: String!
+  isActive: Boolean!
+}
+
+# =============================================================================
+# AGGREGATED USER ENTITY
+# =============================================================================
+
+# User aggregate across all vaults on a chain. ID: userAddress-chainId
+type User @entity {
+  id: ID!
+  address: Bytes!
+  chainId: Int!
+
+  # Aggregated stats
+  totalPositions: Int!
+  totalAssetsUsd: BigDecimal!
+  totalEarnedUsd: BigDecimal!
+  totalRealizedPnlUsd: BigDecimal!
+
+  firstSeenAt: BigInt!
+  lastActiveAt: BigInt!
+}
+
+# =============================================================================
+# OPS / TELEMETRY ENTITIES
+# =============================================================================
+
+# VaultUpkeep action - Chainlink Automation keeper operations. ID: txHash-logIndex
+type UpkeepAction @entity {
+  id: ID!
+  chainId: Int!
+  upkeep: Bytes!
+  op: Int!
+  arg: BigInt!
+  success: Boolean!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# =============================================================================
+# EVENT AUDIT TRAIL ENTITIES
+# =============================================================================
+
+# Fee event types
+enum FeeEventType {
+  DEPOSIT_FEE
+  WITHDRAW_FEE
+  IMMEDIATE_EXIT_PENALTY
+  IMMEDIATE_EXIT_PENALTY_UPDATED
+  FORCE_EXIT_PENALTY
+  FORCE_EXIT_PENALTY_UPDATED
+  PERF_MINT
+  CRYSTALLIZE
+}
+
+# Fee event - tracks all fee-related events. ID: txHash-logIndex
+type FeeEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+  type: FeeEventType!
+
+  # For deposit/withdraw fees
+  sender: Bytes
+  assetsFee: BigInt
+  sharesToTreasury: BigInt
+
+  # For crystallize
+  oldHwm: BigInt
+  newHwm: BigInt
+  feeAssets: BigInt
+
+  # For perf mint
+  hwmBefore: BigInt
+  ppsBefore: BigInt
+  sharesMinted: BigInt
+  ppsAfter: BigInt
+
+  # For immediate exit penalty updated
+  oldBps: BigInt
+  newBps: BigInt
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Crystallization event - high-water-mark reset and fee capture. ID: txHash-logIndex
+type Crystallization @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  oldHwm: BigInt!
+  newHwm: BigInt!
+  feeAssets: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Performance fee mint event. ID: txHash-logIndex
+type PerfFeeMint @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  hwmBefore: BigInt!
+  ppsBefore: BigInt!
+  sharesMinted: BigInt!
+  ppsAfter: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Strategy route event - assets routed to strategy. ID: txHash-logIndex
+type StrategyRoute @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  strategy: Bytes!
+  amount: BigInt!
+  cashAfter: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Vault realization event. ID: txHash-logIndex
+type VaultRealization @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  amount: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Reserve restore event. ID: txHash-logIndex
+type ReserveRestore @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  cashAfter: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Epoch event. ID: txHash-logIndex
+type EpochEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  newEpochStart: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Claim queue event types
+enum ClaimQueueEventType {
+  QUEUED
+  DEQUEUED
+}
+
+# Claim queue event - queued/dequeued. ID: txHash-logIndex
+type ClaimQueueEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  type: ClaimQueueEventType!
+  claimId: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Shares freeze event types
+enum SharesFreezeEventType {
+  FROZEN
+  UNFROZEN
+}
+
+# Shares freeze/unfreeze event. ID: txHash-logIndex
+type SharesFreezeEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  type: SharesFreezeEventType!
+  user: Bytes!
+  shares: BigInt!
+  claimId: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Module change event - Diamond-lite routing. ID: txHash-logIndex
+type ModuleChange @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  selector: Bytes!
+  module: Bytes!
+  role: Int!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Role change event. ID: txHash-logIndex
+type RoleChange @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  selector: Bytes!
+  role: Int!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Seal event types
+enum SealEventType {
+  PREPARED
+  SEALED
+}
+
+# Seal event - system sealing. ID: txHash-logIndex
+type SealEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  type: SealEventType!
+  sealer: Bytes!
+  configHash: Bytes!
+  sealedAt: BigInt  # only for SEALED type
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Component timelock event types
+enum ComponentTimelockEventType {
+  ROUTER_SUBMITTED
+  ROUTER_ACCEPTED
+  ROUTER_REVOKED
+  BUFFER_SUBMITTED
+  BUFFER_ACCEPTED
+  BUFFER_REVOKED
+}
+
+# Component timelock event. ID: txHash-logIndex
+type ComponentTimelockEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  type: ComponentTimelockEventType!
+  component: Bytes  # the address of the component (null for revoked)
+  eta: BigInt       # execution time (null for accepted/revoked)
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# NAV smooth update event. ID: txHash-logIndex
+type NavSmoothEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  navReal: BigInt!
+  navSmooth: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# PPS snapshot event. ID: txHash-logIndex
+type PpsSnapshot @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  snapshotTimestamp: BigInt!
+  totalAssets: BigInt!
+  totalSupply: BigInt!
+  pps: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Warm adapter event types
+enum WarmAdapterEventType {
+  APPROVED
+  REVOKED
+}
+
+# Warm adapter event. ID: txHash-logIndex
+type WarmAdapterEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  type: WarmAdapterEventType!
+  adapter: Bytes!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Guardian pause event. ID: txHash-logIndex
+type GuardianPauseEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  guardian: Bytes!
+  pausedAt: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Component update event - generic for all component updates. ID: txHash-logIndex
+type ComponentUpdate @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  componentType: String!  # PARAMS_PROVIDER, BUFFER_MANAGER, STRATEGY_ROUTER, etc.
+  newAddress: Bytes!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Ownership transfer event. ID: txHash-logIndex
+type OwnershipEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  previousOwner: Bytes!
+  newOwner: Bytes!
+  isPending: Boolean!  # true for initiated, false for completed
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# =============================================================================
+# STRATEGY ROUTER ENTITIES
+# =============================================================================
+
+# Strategy router configuration. ID: routerAddress-chainId
+type StrategyRouter @entity {
+  id: ID!
+  vault: Vault
+  router: Bytes!
+  chainId: Int!
+
+  owner: Bytes
+  core: Bytes
+  paramsProvider: Bytes
+  healthRegistry: Bytes
+  secondaryOracle: Bytes
+
+  lossCapBps: Int
+  maxOracleDeviationBps: Int
+  gasPerStrategyWithdraw: BigInt
+
+  intakeMode: Int
+
+  # Harvest telemetry (PR-B)
+  totalHarvestBatches: BigInt!
+  cumulativeHarvestPnl: BigInt!
+  cumulativeHarvestRealized: BigInt!
+  lastHarvestTimestamp: BigInt
+
+  createdAt: BigInt!
+  updatedAt: BigInt!
+}
+
+# Strategy router event - generic config changes. ID: txHash-logIndex
+type StrategyRouterEvent @entity {
+  id: ID!
+  router: StrategyRouter!
+  chainId: Int!
+
+  eventType: String!  # STRATEGY_REGISTERED, WEIGHTS_SET, etc.
+  strategy: Bytes
+  enabled: Boolean
+  priority: Int
+  weightBps: Int
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# =============================================================================
+# HARVEST TELEMETRY ENTITIES (PR-B)
+# =============================================================================
+
+# Harvest event for individual strategy. ID: txHash-logIndex
+type StrategyHarvestEvent @entity {
+  id: ID!
+  vault: Vault
+  router: StrategyRouter
+  chainId: Int!
+
+  strategy: Bytes!
+  pnl: BigInt!       # can be negative
+  realized: BigInt!
+  success: Boolean!
+  failureReason: Bytes  # if failed
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Harvest batch summary. ID: txHash-logIndex
+type HarvestBatch @entity {
+  id: ID!
+  vault: Vault
+  router: StrategyRouter
+  chainId: Int!
+
+  visited: BigInt!
+  aggregatePnl: BigInt!
+  aggregateRealized: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# External call failure event (security logging). ID: txHash-logIndex
+type ExternalCallFailure @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  target: Bytes!
+  functionName: String
+  reason: Bytes
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# =============================================================================
+# CONFIGURATION EVENTS (from Events.sol)
+# =============================================================================
+
+# Ops reserve target timelock event. ID: txHash-logIndex
+type OpsReserveTargetEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  eventType: String!  # SUBMITTED, ACCEPTED, REVOKED
+  bps: Int
+  eta: BigInt
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Withdrawal rate limiting event. ID: txHash-logIndex
+type WithdrawalLimitEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  limitType: String!  # MAX_PER_BLOCK, MAX_PER_TX, MIN_CLAIM, CAP_PER_EPOCH
+  value: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Dynamic cap configuration event. ID: txHash-logIndex
+type DynamicCapEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  minBps: Int!
+  maxBps: Int!
+  threshold: BigInt!
+  enabled: Boolean!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Queue anti-spam configuration event. ID: txHash-logIndex
+type QueueAntiSpamEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  maxClaimsPerEpoch: Int!
+  cooldownSeconds: BigInt!
+  epochDuration: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Circuit breaker event. ID: txHash-logIndex
+type CircuitBreakerEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  eventType: String!  # CONFIGURED, TRIGGERED, TVL_SNAPSHOT
+  thresholdBps: Int
+  snapshotInterval: BigInt
+  lastTVL: BigInt
+  currentTVL: BigInt
+  dropBps: BigInt
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Rebalance event. ID: txHash-logIndex
+type RebalanceEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  fromStrategy: Bytes!
+  toStrategy: Bytes!
+  amount: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Emergency drain event. ID: txHash-logIndex
+type EmergencyDrainEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  eventType: String!  # STARTED, COMPLETED
+  totalRecovered: BigInt
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Liquidity lock event. ID: txHash-logIndex
+type LiquidityLockEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  locked: Boolean!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Oracle configuration event. ID: txHash-logIndex
+type OracleConfigEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  oracle: Bytes!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Batch guardrails event. ID: txHash-logIndex
+type BatchGuardrailsEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  maxActions: Int!
+  maxNavDelta: Int!
+  staleness: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Vault deposit cap event. ID: txHash-logIndex
+type DepositCapEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  cap: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Adapter allowlist event. ID: txHash-logIndex
+type AdapterAllowlistEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  adapter: Bytes!
+  allowed: Boolean!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Adapter cap event. ID: txHash-logIndex
+type AdapterCapEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  adapter: Bytes!
+  cap: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# =============================================================================
+# ORACLE REGISTRY ENTITIES (from GlobalConfig)
+# =============================================================================
+# NOTE: These events are emitted from GlobalConfig contract.
+# To index these, add GlobalConfig as a datasource in subgraph.yaml.
+
+# Oracle registry event types
+enum OracleRegistryEventType {
+  ASSET_CONFIG_SET    # AssetOracleConfigSet(asset, oracle, maxStaleness)
+  VAULT_OVERRIDE_SET  # VaultOracleOverrideSet(vault, oracle, maxStaleness)
+  DEFAULT_CONFIG_SET  # DefaultOracleConfigSet(oracle, maxStaleness)
+}
+
+# Oracle registry configuration event. ID: txHash-logIndex
+type OracleRegistryEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  type: OracleRegistryEventType!
+  asset: Bytes           # for ASSET_CONFIG_SET
+  vault: Bytes           # for VAULT_OVERRIDE_SET
+  oracle: Bytes!
+  maxStaleness: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Vault routing configured event. ID: txHash-logIndex
+type VaultRoutingConfig @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  queueModule: Bytes!
+  adminModule: Bytes!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# =============================================================================
+# PERIPHERY REWARDS PIPELINE ENTITIES
+# =============================================================================
+# Contracts: OpsCollector, FeeDistributor, EpochPayout, ReferralBinding,
+#            PartnerRegistry, DepositRouter
+# Pipeline: FeeCollector → OpsCollector → FeeDistributor → EpochPayout (Merkle)
+# =============================================================================
+
+# --- OpsCollector Events ---
+
+# OpsCollector.split() executed — shares split between ops wallet and growth (FeeDistributor)
+# ID: txHash-logIndex
+type OpsSplitEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  totalShares: BigInt!
+  opsShares: BigInt!
+  growthShares: BigInt!
+  opsWallet: Bytes!
+  feeDistributor: Bytes!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# OpsCollector split params updated
+# ID: txHash-logIndex
+type OpsSplitParamsEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  opsBps: Int!
+  growthBps: Int!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# OpsCollector wallet or distributor address updated
+# ID: txHash-logIndex
+type OpsAddressUpdateEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  updateType: String!     # "OPS_WALLET" or "FEE_DISTRIBUTOR"
+  oldAddress: Bytes!
+  newAddress: Bytes!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# --- FeeDistributor Events ---
+
+# FeeDistributor.redeemShares() — vault shares redeemed for USDC
+# ID: txHash-logIndex
+type FeeDistributorRedeemEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  sharesToRedeem: BigInt!
+  actualSharesRedeemed: BigInt!
+  assetsReceived: BigInt!
+  epochId: Int!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# FeeDistributor.fundEpochPayout() — USDC sent to EpochPayout
+# ID: txHash-logIndex
+type EpochFundedEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  epochId: Int!
+  assets: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# FeeDistributor epoch advanced
+# ID: txHash-logIndex
+type EpochAdvancedEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  newEpochId: Int!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# FeeDistributor guardrails updated
+# ID: txHash-logIndex
+type FeeDistributorGuardrailsEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  maxRedeemPerEpoch: BigInt!
+  minDelayBetweenRedeems: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# FeeDistributor EpochPayout address updated
+# ID: txHash-logIndex
+type FeeDistributorPayoutUpdateEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  oldPayout: Bytes!
+  newPayout: Bytes!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# --- EpochPayout Events (Merkle Distributor) ---
+
+# EpochPayout.publishRoot() — Merkle root published for an epoch
+# ID: txHash-logIndex
+type EpochRootPublishedEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  epochId: Int!
+  root: Bytes!
+  metadataHash: Bytes!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# EpochPayout.claim() — beneficiary claims rewards via Merkle proof
+# ID: txHash-logIndex
+type EpochClaimedEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  epochId: Int!
+  category: Bytes!            # keccak256("REFERRAL") or keccak256("PARTNER")
+  beneficiary: Bytes!
+  amount: BigInt!
+  metadataHash: Bytes!
+  claimedBy: Bytes!           # msg.sender (may differ from beneficiary for third-party claims)
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# --- ReferralBinding Events ---
+
+# ReferralBinding.bind() or bindFor() — user bound to referrer (set-once)
+# ID: txHash-logIndex
+type ReferralBoundEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  user: Bytes!
+  referrer: Bytes!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# ReferralBinding router authorization changed
+# ID: txHash-logIndex
+type RouterAuthorizationEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  router: Bytes!
+  authorized: Boolean!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# --- PartnerRegistry Events ---
+
+# PartnerRegistry partner status
+enum PartnerEventType {
+  REGISTERED
+  UPDATED
+  DISABLED
+}
+
+# PartnerRegistry.setPartner() / disablePartner()
+# ID: txHash-logIndex
+type PartnerEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  eventType: PartnerEventType!
+  partner: Bytes!
+
+  # PartnerTerms fields (null for DISABLED)
+  enabled: Boolean
+  bps: Int
+  capPerEpoch: BigInt
+  expiry: BigInt
+  recipient: Bytes
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# --- DepositRouter Events ---
+
+# DepositRouter.depositWithPermit2*() — deposit with referral binding
+# ID: txHash-logIndex
+type DepositWithReferralEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  user: Bytes!
+  referrer: Bytes!
+  assets: BigInt!
+  shares: BigInt!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# DepositRouter referral binding was skipped (already bound, self-referral, etc.)
+# ID: txHash-logIndex
+type ReferralBindingSkippedEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  user: Bytes!
+  referrer: Bytes!
+  reason: Bytes!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# --- PeripheryUpkeepAdapter Events ---
+
+# PeripheryUpkeepAdapter automation event. ID: txHash-logIndex
+type PeripheryUpkeepEvent @entity {
+  id: ID!
+  chainId: Int!
+
+  op: String!    # "SPLIT", "REDEEM", "FUND"
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}

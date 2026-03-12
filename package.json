@@ -1,0 +1,39 @@
+{
+  "name": "@multyr/subgraphs",
+  "version": "1.0.0",
+  "description": "The Graph subgraphs for Multyr vault ecosystem across Ethereum, Arbitrum, and Base",
+  "type": "module",
+  "scripts": {
+    "extract-abis": "node scripts/extract-abis.mjs",
+    "postinstall": "npm run extract-abis || echo 'ABI extraction skipped (run forge build first if needed)'",
+
+    "codegen:eth": "cd ethereum && graph codegen",
+    "build:eth": "cd ethereum && graph build",
+    "test:eth": "cd ethereum && graph test",
+    "deploy:eth": "cd ethereum && graph deploy --studio multyr-ethereum",
+
+    "codegen:arb": "cd arbitrum && graph codegen",
+    "build:arb": "cd arbitrum && graph build",
+    "test:arb": "cd arbitrum && graph test",
+    "deploy:arb": "cd arbitrum && graph deploy --studio multyr-arb",
+
+    "codegen:base": "cd base && graph codegen",
+    "build:base": "cd base && graph build",
+    "test:base": "cd base && graph test",
+    "deploy:base": "cd base && graph deploy --studio multyr-base",
+
+    "codegen:all": "npm run codegen:eth && npm run codegen:arb && npm run codegen:base",
+    "build:all": "npm run build:eth && npm run build:arb && npm run build:base",
+    "test:all": "npm run test:eth && npm run test:arb && npm run test:base",
+
+    "test:subgraph": "npm run codegen:all && npm run build:all"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "^0.70.0",
+    "@graphprotocol/graph-ts": "^0.33.0",
+    "matchstick-as": "^0.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

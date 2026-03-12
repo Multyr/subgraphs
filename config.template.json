@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Subgraph deployment configuration template. Copy to config.<network>.json and fill in values.",
+
+  "networks": {
+    "arbitrum-one": {
+      "network": "arbitrum-one",
+      "chainId": 42161,
+      "factory": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "startBlock": 0
+      },
+      "tokens": {
+        "USDC": {
+          "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "decimals": 6,
+          "chainlinkFeed": "0x50834F3163758fcC1Df9973b6e91f0F0F0434aD3"
+        }
+      },
+      "subgraphName": "multyr-vault-arbitrum",
+      "studioSlug": "multyr-vault-arbitrum"
+    },
+
+    "base": {
+      "network": "base",
+      "chainId": 8453,
+      "factory": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "startBlock": 0
+      },
+      "tokens": {
+        "USDC": {
+          "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "decimals": 6,
+          "chainlinkFeed": "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B"
+        }
+      },
+      "subgraphName": "multyr-vault-base",
+      "studioSlug": "multyr-vault-base"
+    },
+
+    "mainnet": {
+      "network": "mainnet",
+      "chainId": 1,
+      "factory": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "startBlock": 0
+      },
+      "tokens": {
+        "USDC": {
+          "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "decimals": 6,
+          "chainlinkFeed": "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6"
+        }
+      },
+      "subgraphName": "multyr-vault-mainnet",
+      "studioSlug": "multyr-vault-mainnet"
+    },
+
+    "arbitrum-sepolia": {
+      "network": "arbitrum-sepolia",
+      "chainId": 421614,
+      "factory": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "startBlock": 0
+      },
+      "tokens": {
+        "USDC": {
+          "address": "0x0000000000000000000000000000000000000000",
+          "decimals": 6,
+          "chainlinkFeed": null
+        }
+      },
+      "subgraphName": "multyr-vault-arbitrum-sepolia",
+      "studioSlug": "multyr-vault-arbitrum-sepolia",
+      "isTestnet": true
+    }
+  },
+
+  "instructions": {
+    "step1": "Copy this file to config.<network>.json (e.g., config.arbitrum.json)",
+    "step2": "Fill in the factory.address with your deployed VaultFactory address",
+    "step3": "Set factory.startBlock to the block number where VaultFactory was deployed",
+    "step4": "Update subgraph.yaml with the values from your config file",
+    "step5": "Run: graph codegen && graph build",
+    "step6": "Deploy: graph deploy --studio <studioSlug>"
+  }
+}

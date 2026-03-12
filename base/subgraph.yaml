@@ -1,0 +1,691 @@
+specVersion: 0.0.5
+schema:
+  file: ../schema.graphql
+description: Multyr Vault Subgraph - Arbitrum One
+repository: https://github.com/multyr/vault-subgraph
+
+dataSources:
+  - kind: ethereum/contract
+    name: VaultFactory
+    network: base
+    source:
+      # TODO: Replace with actual deployed factory address
+      address: "0xfadfd2068d2ca0151229edddff5056b71e1674cc"
+      abi: VaultFactory
+      # TODO: Set to actual deployment block
+      startBlock: 428672781
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Protocol
+        - VaultFactory
+        - Vault
+        - TokenPrice
+      abis:
+        - name: VaultFactory
+          file: ./abis/VaultFactory.json
+        - name: Vault
+          file: ./abis/Vault.json
+        - name: ERC20
+          file: ./abis/ERC20.json
+        - name: ChainlinkAggregator
+          file: ./abis/ChainlinkAggregator.json
+      eventHandlers:
+        # VaultFactory events - support both VaultDeployed and VaultCreated for backwards compatibility
+        - event: VaultDeployed(indexed address,indexed address,indexed address,address,string,string)
+          handler: handleVaultDeployed
+        - event: VaultCreated(indexed address,indexed address,address,address,string,string)
+          handler: handleVaultCreated
+        - event: VaultProductionReady(indexed address)
+          handler: handleVaultProductionReady
+      file: ./src/mappings.ts
+
+  - kind: ethereum/contract
+    name: VaultUpkeep
+    network: base
+    source:
+      # TODO: Replace with actual deployed VaultUpkeep address on Arbitrum
+      address: "0x0000000000000000000000000000000000000001"
+      abi: VaultUpkeep
+      # TODO: Set to actual deployment block
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - UpkeepAction
+      abis:
+        - name: VaultUpkeep
+          file: ./abis/VaultUpkeep.json
+      eventHandlers:
+        - event: UpkeepPerformed(uint8,uint256,bool)
+          handler: handleUpkeepPerformed
+      file: ./src/mappings.ts
+
+  - kind: ethereum/contract
+    name: GlobalConfig
+    network: base
+    source:
+      # TODO: Replace with actual deployed GlobalConfig address
+      address: "0x0000000000000000000000000000000000000000"
+      abi: GlobalConfig
+      # TODO: Set to actual deployment block
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - OracleRegistryEvent
+      abis:
+        - name: GlobalConfig
+          file: ./abis/GlobalConfig.json
+      eventHandlers:
+        - event: DefaultOracleConfigSet(indexed address,uint256)
+          handler: handleDefaultOracleConfigSet
+        - event: AssetOracleConfigSet(indexed address,indexed address,uint256)
+          handler: handleAssetOracleConfigSet
+        - event: VaultOracleOverrideSet(indexed address,indexed address,uint256)
+          handler: handleVaultOracleOverrideSet
+      file: ./src/mappings.ts
+
+  # =========================================================================
+  # PERIPHERY REWARDS PIPELINE
+  # =========================================================================
+  # Contracts: OpsCollector, FeeDistributor, EpochPayout, ReferralBinding,
+  #            PartnerRegistry, DepositRouter
+  # Pipeline: FeeCollector → OpsCollector → FeeDistributor → EpochPayout
+  # NOTE: Each contract has its own address and startBlock (different from core)
+  # =========================================================================
+
+  - kind: ethereum/contract
+    name: OpsCollector
+    network: base
+    source:
+      # TODO: Replace with actual deployed OpsCollector address
+      address: "0x0000000000000000000000000000000000000000"
+      abi: OpsCollector
+      # TODO: Set to actual deployment block
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - OpsSplitEvent
+        - OpsSplitParamsEvent
+        - OpsAddressUpdateEvent
+      abis:
+        - name: OpsCollector
+          file: ./abis/OpsCollector.json
+      eventHandlers:
+        - event: OpsSplitExecuted(uint256,uint256,uint256,indexed address,indexed address)
+          handler: handleOpsSplitExecuted
+        - event: SplitParamsUpdated(uint16,uint16)
+          handler: handleSplitParamsUpdated
+        - event: OpsWalletUpdated(indexed address,indexed address)
+          handler: handleOpsWalletUpdated
+        - event: FeeDistributorUpdated(indexed address,indexed address)
+          handler: handleFeeDistributorUpdated
+      file: ./src/mappings.ts
+
+  - kind: ethereum/contract
+    name: FeeDistributor
+    network: base
+    source:
+      # TODO: Replace with actual deployed FeeDistributor address
+      address: "0x0000000000000000000000000000000000000000"
+      abi: FeeDistributor
+      # TODO: Set to actual deployment block
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - FeeDistributorRedeemEvent
+        - EpochFundedEvent
+        - EpochAdvancedEvent
+        - FeeDistributorGuardrailsEvent
+        - FeeDistributorPayoutUpdateEvent
+      abis:
+        - name: FeeDistributor
+          file: ./abis/FeeDistributor.json
+      eventHandlers:
+        - event: Redeemed(uint256,uint256,uint256,indexed uint32)
+          handler: handleRedeemed
+        - event: EpochFunded(indexed uint32,uint256)
+          handler: handleEpochFunded
+        - event: EpochAdvanced(indexed uint32)
+          handler: handleEpochAdvanced
+        - event: GuardrailsUpdated(uint256,uint256)
+          handler: handleGuardrailsUpdated
+        - event: EpochPayoutUpdated(indexed address,indexed address)
+          handler: handleEpochPayoutUpdated
+      file: ./src/mappings.ts
+
+  - kind: ethereum/contract
+    name: EpochPayout
+    network: base
+    source:
+      # TODO: Replace with actual deployed EpochPayout address
+      address: "0x0000000000000000000000000000000000000000"
+      abi: EpochPayout
+      # TODO: Set to actual deployment block
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - EpochRootPublishedEvent
+        - EpochClaimedEvent
+      abis:
+        - name: EpochPayout
+          file: ./abis/EpochPayout.json
+      eventHandlers:
+        - event: RootPublished(indexed uint32,bytes32,bytes32)
+          handler: handleRootPublished
+        - event: Claimed(indexed uint32,indexed bytes32,indexed address,uint256,bytes32)
+          handler: handleClaimed
+      file: ./src/mappings.ts
+
+  - kind: ethereum/contract
+    name: ReferralBinding
+    network: base
+    source:
+      # TODO: Replace with actual deployed ReferralBinding address
+      address: "0x0000000000000000000000000000000000000000"
+      abi: ReferralBinding
+      # TODO: Set to actual deployment block
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - ReferralBoundEvent
+        - RouterAuthorizationEvent
+      abis:
+        - name: ReferralBinding
+          file: ./abis/ReferralBinding.json
+      eventHandlers:
+        - event: ReferralBound(indexed address,indexed address)
+          handler: handleReferralBound
+        - event: RouterAuthorizationUpdated(indexed address,bool)
+          handler: handleRouterAuthorizationUpdated
+      file: ./src/mappings.ts
+
+  - kind: ethereum/contract
+    name: PartnerRegistry
+    network: base
+    source:
+      # TODO: Replace with actual deployed PartnerRegistry address
+      address: "0x0000000000000000000000000000000000000000"
+      abi: PartnerRegistry
+      # TODO: Set to actual deployment block
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - PartnerEvent
+      abis:
+        - name: PartnerRegistry
+          file: ./abis/PartnerRegistry.json
+      eventHandlers:
+        - event: PartnerRegistered(indexed address,(bool,uint16,uint256,uint64,address))
+          handler: handlePartnerRegistered
+        - event: PartnerUpdated(indexed address,(bool,uint16,uint256,uint64,address))
+          handler: handlePartnerUpdated
+        - event: PartnerDisabled(indexed address)
+          handler: handlePartnerDisabled
+      file: ./src/mappings.ts
+
+  - kind: ethereum/contract
+    name: DepositRouter
+    network: base
+    source:
+      # TODO: Replace with actual deployed DepositRouter address
+      address: "0x0000000000000000000000000000000000000000"
+      abi: DepositRouter
+      # TODO: Set to actual deployment block
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - DepositWithReferralEvent
+        - ReferralBindingSkippedEvent
+      abis:
+        - name: DepositRouter
+          file: ./abis/DepositRouter.json
+      eventHandlers:
+        - event: DepositWithReferral(indexed address,indexed address,uint256,uint256)
+          handler: handleDepositWithReferral
+        - event: ReferralBindingSkipped(indexed address,indexed address,bytes)
+          handler: handleReferralBindingSkipped
+      file: ./src/mappings.ts
+
+  - kind: ethereum/contract
+    name: PeripheryUpkeepAdapter
+    network: base
+    source:
+      # TODO: Replace with actual deployed PeripheryUpkeepAdapter address
+      address: "0x0000000000000000000000000000000000000000"
+      abi: PeripheryUpkeepAdapter
+      # TODO: Set to actual deployment block
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - PeripheryUpkeepEvent
+      abis:
+        - name: PeripheryUpkeepAdapter
+          file: ./abis/PeripheryUpkeepAdapter.json
+      eventHandlers:
+        - event: PeripheryUpkeepPerformed(uint8)
+          handler: handlePeripheryUpkeepPerformed
+      file: ./src/mappings.ts
+
+templates:
+  - kind: ethereum/contract
+    name: VaultTemplate
+    network: base
+    source:
+      abi: Vault
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Vault
+        - VaultDayData
+        - UserVaultPosition
+        - UserPositionDayData
+        - PositionLot
+        - Transaction
+        - ClaimRequest
+        - User
+        - TokenPrice
+        - FeeEvent
+        - Crystallization
+        - PerfFeeMint
+        - StrategyRoute
+        - VaultRealization
+        - ReserveRestore
+        - EpochEvent
+        - ClaimQueueEvent
+        - SharesFreezeEvent
+        - ModuleChange
+        - RoleChange
+        - SealEvent
+        - ComponentTimelockEvent
+        - VaultStrategy
+        - ForceWithdrawEvent
+      abis:
+        - name: Vault
+          file: ./abis/Vault.json
+        - name: ERC20
+          file: ./abis/ERC20.json
+        - name: ChainlinkAggregator
+          file: ./abis/ChainlinkAggregator.json
+      eventHandlers:
+        # =========================================================================
+        # ERC-4626 Core Events
+        # =========================================================================
+        - event: Deposit(indexed address,indexed address,uint256,uint256)
+          handler: handleDeposit
+        - event: Withdraw(indexed address,indexed address,indexed address,uint256,uint256)
+          handler: handleWithdraw
+
+        # =========================================================================
+        # ERC-20 Transfer
+        # =========================================================================
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleTransfer
+
+        # =========================================================================
+        # Fees / Economics Events
+        # =========================================================================
+        - event: DepositFeeParamsSet(uint16,uint16,address)
+          handler: handleDepositFeeParamsSet
+        - event: DepositFeeTaken(indexed address,uint256,uint256)
+          handler: handleDepositFeeTaken
+        - event: WithdrawFeeTaken(indexed address,uint256,uint256)
+          handler: handleWithdrawFeeTaken
+        - event: ImmediateExitPenaltyApplied(indexed address,uint256,uint256)
+          handler: handleImmediateExitPenaltyApplied
+        - event: ImmediateExitPenaltyUpdated(uint16,uint16)
+          handler: handleImmediateExitPenaltyUpdated
+        - event: ForceExitPenaltyApplied(indexed address,uint256)
+          handler: handleForceExitPenaltyApplied
+        - event: ForceExitPenaltyUpdated(uint16,uint16)
+          handler: handleForceExitPenaltyUpdated
+        - event: ForceWithdrawExecuted(indexed address,indexed address,address,uint256,uint256)
+          handler: handleForceWithdrawExecuted
+        - event: Crystallized(uint256,uint256,uint256)
+          handler: handleCrystallized
+        - event: PerfFeeMinted(uint256,uint256,uint256,uint256)
+          handler: handlePerfFeeMinted
+        - event: FeeParamsSubmitted(uint16,uint16,address,uint64)
+          handler: handleFeeParamsSubmitted
+        - event: FeeParamsAccepted(uint16,uint16,address)
+          handler: handleFeeParamsAccepted
+        - event: FeeParamsRevoked()
+          handler: handleFeeParamsRevoked
+        - event: PerfParamsSubmitted(uint256,uint64,uint64)
+          handler: handlePerfParamsSubmitted
+        - event: PerfParamsAccepted(uint256,uint64)
+          handler: handlePerfParamsAccepted
+        - event: PerfParamsRevoked()
+          handler: handlePerfParamsRevoked
+        - event: PerfParamsSet(uint256,uint64)
+          handler: handlePerfParamsSet
+        - event: FeeParamsUpdated(uint16,uint16,address)
+          handler: handleFeeParamsUpdated
+        - event: PerfParamsUpdated(uint256,uint64)
+          handler: handlePerfParamsUpdated
+
+        # =========================================================================
+        # Ops Reserve Target Timelock Events
+        # =========================================================================
+        - event: OpsReserveTargetSubmitted(uint16,uint64)
+          handler: handleOpsReserveTargetSubmitted
+        - event: OpsReserveTargetAccepted(uint16)
+          handler: handleOpsReserveTargetAccepted
+        - event: OpsReserveTargetRevoked()
+          handler: handleOpsReserveTargetRevoked
+
+        # =========================================================================
+        # Withdrawal Rate Limiting Events
+        # =========================================================================
+        - event: MaxWithdrawalPerBlockUpdated(uint256)
+          handler: handleMaxWithdrawalPerBlockUpdated
+        - event: MaxWithdrawalPerTxUpdated(uint256)
+          handler: handleMaxWithdrawalPerTxUpdated
+        - event: MinClaimAmountUpdated(uint256)
+          handler: handleMinClaimAmountUpdated
+        - event: CapPerEpochBpsUpdated(uint16)
+          handler: handleCapPerEpochBpsUpdated
+
+        # =========================================================================
+        # Dynamic Withdrawal Caps Events
+        # =========================================================================
+        - event: DynamicCapConfigured(uint16,uint16,uint256,bool)
+          handler: handleDynamicCapConfigured
+
+        # =========================================================================
+        # Queue Anti-Spam Events
+        # =========================================================================
+        - event: QueueAntiSpamConfigured(uint8,uint64,uint64)
+          handler: handleQueueAntiSpamConfigured
+
+        # =========================================================================
+        # Circuit Breaker Events
+        # =========================================================================
+        - event: CircuitBreakerConfigured(uint16,uint64)
+          handler: handleCircuitBreakerConfigured
+        - event: CircuitBreakerTriggered(uint256,uint256,uint256)
+          handler: handleCircuitBreakerTriggered
+        - event: TVLSnapshotUpdated(uint256,uint64)
+          handler: handleTVLSnapshotUpdated
+
+        # =========================================================================
+        # Claim Queue Events
+        # =========================================================================
+        - event: ClaimRequested(indexed uint256,indexed address,uint256,bool)
+          handler: handleClaimRequested
+        - event: ClaimCancelled(indexed uint256,indexed address)
+          handler: handleClaimCancelled
+        - event: ClaimSettled(indexed uint256,indexed address,uint256)
+          handler: handleClaimSettled
+        - event: ClaimQueued(indexed uint256)
+          handler: handleClaimQueued
+        - event: ClaimDequeued(indexed uint256)
+          handler: handleClaimDequeued
+        - event: SharesFrozen(indexed address,uint256,uint256)
+          handler: handleSharesFrozen
+        - event: SharesUnfrozen(indexed address,uint256,uint256)
+          handler: handleSharesUnfrozen
+
+        # =========================================================================
+        # Routing / Ops Events
+        # =========================================================================
+        - event: RoutedToStrategy(indexed address,uint256,uint256)
+          handler: handleRoutedToStrategy
+        - event: Realized(uint256)
+          handler: handleRealized
+        - event: ReserveTargetRestored(uint256)
+          handler: handleReserveTargetRestored
+        - event: EpochRolled(uint256)
+          handler: handleEpochRolled
+        - event: VaultPpsSnapshot(uint64,uint256,uint256,uint256)
+          handler: handleVaultPpsSnapshot
+
+        # =========================================================================
+        # Ops High-Level Events
+        # =========================================================================
+        - event: Rebalanced(indexed address,indexed address,uint256)
+          handler: handleRebalanced
+        - event: EmergencyDrainStarted()
+          handler: handleEmergencyDrainStarted
+        - event: EmergencyDrainCompleted(uint256)
+          handler: handleEmergencyDrainCompleted
+        - event: LiquidityOpLocked()
+          handler: handleLiquidityOpLocked
+        - event: LiquidityOpUnlocked()
+          handler: handleLiquidityOpUnlocked
+
+        # =========================================================================
+        # Fee Collector Events
+        # =========================================================================
+        - event: FeeCollectorSet(indexed address)
+          handler: handleFeeCollectorSet
+
+        # =========================================================================
+        # Health Registry Events
+        # =========================================================================
+        - event: HealthRegistrySetInVault(indexed address)
+          handler: handleHealthRegistrySetInVault
+
+        # =========================================================================
+        # Oracle / Guardrails Events
+        # =========================================================================
+        - event: OracleSet(indexed address)
+          handler: handleOracleSet
+        - event: BatchGuardrailsUpdated(uint8,uint16,uint256)
+          handler: handleBatchGuardrailsUpdated
+        - event: VaultDepositCapUpdated(uint256)
+          handler: handleVaultDepositCapUpdated
+        - event: AdapterAllowedUpdated(indexed address,bool)
+          handler: handleAdapterAllowedUpdated
+        - event: AdapterCapUpdated(indexed address,uint256)
+          handler: handleAdapterCapUpdated
+
+        # =========================================================================
+        # NAV Smoothing Events
+        # =========================================================================
+        - event: NavSmoothUpdated(uint256,uint256,uint256)
+          handler: handleNavSmoothUpdated
+
+        # =========================================================================
+        # Governance / Diamond-lite / Seal Events
+        # =========================================================================
+        - event: SelectorRegistrySet(indexed address)
+          handler: handleSelectorRegistrySet
+        - event: ModuleSet(indexed bytes4,indexed address,uint8)
+          handler: handleModuleSet
+        - event: ModulesBatchSet(uint256)
+          handler: handleModulesBatchSet
+        - event: RoleSet(indexed bytes4,uint8)
+          handler: handleRoleSet
+        - event: RoutingFrozen()
+          handler: handleRoutingFrozen
+        - event: ParamsFrozen()
+          handler: handleParamsFrozen
+        - event: OwnershipTransferInitiated(indexed address,indexed address)
+          handler: handleOwnershipTransferInitiated
+        - event: OwnershipTransferred(indexed address,indexed address)
+          handler: handleOwnershipTransferred
+        - event: AuthorizedSealerSet(indexed address)
+          handler: handleAuthorizedSealerSet
+        - event: SealPrepared(indexed address,bytes32)
+          handler: handleSealPrepared
+        - event: SystemSealed(indexed address,bytes32,uint256)
+          handler: handleSystemSealed
+
+        # =========================================================================
+        # Component Updates + Timelock Events
+        # =========================================================================
+        - event: ComponentsTimelockEnabled()
+          handler: handleComponentsTimelockEnabled
+        - event: RouterSubmitted(indexed address,uint64)
+          handler: handleRouterSubmitted
+        - event: RouterAccepted(indexed address)
+          handler: handleRouterAccepted
+        - event: RouterRevoked()
+          handler: handleRouterRevoked
+        - event: BufferManagerSubmitted(indexed address,uint64)
+          handler: handleBufferManagerSubmitted
+        - event: BufferManagerAccepted(indexed address)
+          handler: handleBufferManagerAccepted
+        - event: BufferManagerRevoked()
+          handler: handleBufferManagerRevoked
+        - event: StrategyRouterUpdated(indexed address)
+          handler: handleStrategyRouterUpdated
+        - event: BufferManagerUpdated(indexed address)
+          handler: handleBufferManagerUpdated
+        - event: ParamsProviderUpdated(indexed address)
+          handler: handleParamsProviderUpdated
+        - event: HealthRegistryUpdated(indexed address)
+          handler: handleHealthRegistryUpdated
+        - event: IncentivesUpdated(indexed address)
+          handler: handleIncentivesUpdated
+        - event: FeeCollectorUpdated(indexed address)
+          handler: handleFeeCollectorUpdated
+        - event: VetoerUpdated(indexed address)
+          handler: handleVetoerUpdated
+
+        # =========================================================================
+        # Pause Events
+        # =========================================================================
+        - event: AllPaused()
+          handler: handleAllPaused
+        - event: AllUnpaused()
+          handler: handleAllUnpaused
+        - event: DepositsPaused()
+          handler: handleDepositsPaused
+        - event: DepositsUnpaused()
+          handler: handleDepositsUnpaused
+        - event: WithdrawalsPaused()
+          handler: handleWithdrawalsPaused
+        - event: WithdrawalsUnpaused()
+          handler: handleWithdrawalsUnpaused
+        - event: GuardianPauseActivated(indexed address,uint256)
+          handler: handleGuardianPauseActivated
+        - event: GuardianUpdated(indexed address)
+          handler: handleGuardianUpdated
+
+        # =========================================================================
+        # Warm Adapter Events
+        # =========================================================================
+        - event: WarmAdapterApproved(indexed address)
+          handler: handleWarmAdapterApproved
+        - event: WarmAdapterRevoked(indexed address)
+          handler: handleWarmAdapterRevoked
+
+        # =========================================================================
+        # DepositFor Events
+        # =========================================================================
+        - event: DepositForExecuted(indexed address,indexed address,uint256,uint256)
+          handler: handleDepositForExecuted
+
+        # =========================================================================
+        # External Call Failure Events (Security Logging)
+        # =========================================================================
+        - event: ExternalCallFailed(indexed address,string,bytes)
+          handler: handleExternalCallFailed
+        - event: IncentivesOnDepositFailed(indexed address,bytes)
+          handler: handleIncentivesOnDepositFailed
+        - event: IncentivesOnExitFailed(indexed address,bytes)
+          handler: handleIncentivesOnExitFailed
+
+        # =========================================================================
+        # Factory Deployment Events
+        # =========================================================================
+        - event: VaultRoutingConfigured(indexed address,address,address)
+          handler: handleVaultRoutingConfigured
+
+        # =========================================================================
+        # Ecosystem Configuration Event
+        # =========================================================================
+        - event: EcosystemConfigured(indexed address,indexed address,address,address,address,address)
+          handler: handleEcosystemConfigured
+
+      file: ./src/mappings.ts
+
+  # =========================================================================
+  # StrategyRouter Template - dynamically created when router is set
+  # =========================================================================
+  - kind: ethereum/contract
+    name: StrategyRouterTemplate
+    network: base
+    source:
+      abi: StrategyRouter
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - VaultStrategy
+        - StrategyRoute
+      abis:
+        - name: StrategyRouter
+          file: ./abis/StrategyRouter.json
+        - name: Strategy
+          file: ./abis/Strategy.json
+      eventHandlers:
+        - event: StrategyRegistered(indexed address,uint16,uint16)
+          handler: handleStrategyRegistered
+        - event: StrategyToggled(indexed address,bool)
+          handler: handleStrategyToggled
+        - event: WeightsSet(address[],uint16[])
+          handler: handleWeightsSet
+        - event: IntakeModeSet(uint8)
+          handler: handleIntakeModeSet
+        - event: LossCapSet(uint16)
+          handler: handleLossCapSet
+        - event: OwnerChanged(indexed address,indexed address)
+          handler: handleRouterOwnerChanged
+        - event: CoreSet(indexed address)
+          handler: handleRouterCoreSet
+        - event: ParamsProviderSet(indexed address)
+          handler: handleRouterParamsProviderSet
+        - event: HealthRegistrySet(indexed address)
+          handler: handleRouterHealthRegistrySet
+        - event: SecondaryOracleSet(indexed address)
+          handler: handleSecondaryOracleSet
+        - event: MaxOracleDeviationSet(uint16)
+          handler: handleMaxOracleDeviationSet
+        - event: LossCapPerStrategySet(indexed address,uint16)
+          handler: handleLossCapPerStrategySet
+        - event: MaxStrategyBpsSet(indexed address,uint16)
+          handler: handleMaxStrategyBpsSet
+        - event: GasPerStrategyWithdrawUpdated(uint256)
+          handler: handleGasPerStrategyWithdrawUpdated
+        # Harvest telemetry events (Pendle-style)
+        - event: StrategyHarvested(indexed address,int256,uint256)
+          handler: handleStrategyHarvested
+        - event: StrategyHarvestFailed(indexed address,bytes)
+          handler: handleStrategyHarvestFailed
+        - event: HarvestBatchSummary(uint256,int256,uint256)
+          handler: handleHarvestBatchSummary
+      file: ./src/mappings.ts
