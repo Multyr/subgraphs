@@ -158,6 +158,9 @@ import {
 // Strategy contract binding (for on-chain metadata reads: name, description)
 import { Strategy as StrategyContract } from "../generated/templates/StrategyRouterTemplate/Strategy"
 
+// StrategyRouter contract binding (for on-chain core() reads when CoreSet event was missed)
+import { StrategyRouter as StrategyRouterContract } from "../generated/templates/StrategyRouterTemplate/StrategyRouter"
+
 // VaultUpkeep Events + Contract binding
 import {
   UpkeepPerformed as UpkeepPerformedEvent,
@@ -393,6 +396,27 @@ function ensureRouterTemplate(routerAddr: Address, timestamp: BigInt): void {
     seen.createdAt = timestamp
     seen.save()
   }
+}
+
+/**
+ * Resolve the vault linked to a StrategyRouter.
+ * If router.core is null (because CoreSet event fired before the template was created),
+ * backfill it via an on-chain try_core() call.
+ * Returns the Vault entity or null if resolution fails.
+ */
+function resolveRouterVault(router: StrategyRouter, routerAddress: Address): Vault | null {
+  let routerCore = router.core
+  if (routerCore === null) {
+    // Backfill: CoreSet event was missed, read core() on-chain
+    let routerContract = StrategyRouterContract.bind(routerAddress)
+    let coreResult = routerContract.try_core()
+    if (coreResult.reverted) return null
+    router.core = coreResult.value
+    router.save()
+    routerCore = coreResult.value
+  }
+  let vaultId = getVaultId(Address.fromBytes(routerCore))
+  return Vault.load(vaultId)
 }
 
 // Truncate bytes to max length (for harvest failure reasons to prevent storage bloat)
@@ -2216,10 +2240,7 @@ export function handleStrategyRegistered(event: StrategyRegisteredEvent): void {
   // StrategyDeployment
   let router = StrategyRouter.load(routerId)
   if (router == null) return
-  let routerCore = router.core
-  if (routerCore === null) return
-  let vaultId2 = getVaultId(Address.fromBytes(routerCore))
-  let vault2 = Vault.load(vaultId2)
+  let vault2 = resolveRouterVault(router, event.address)
   if (vault2 === null) return
   let rawName = strategy.name
   let stratName = ""
@@ -2268,10 +2289,7 @@ export function handleStrategyToggled(event: StrategyToggledEvent): void {
   // Update StrategyDeployment
   let routerT = StrategyRouter.load(routerId)
   if (routerT === null) return
-  let routerCoreT = routerT.core
-  if (routerCoreT === null) return
-  let vaultIdT = getVaultId(Address.fromBytes(routerCoreT))
-  let vaultT = Vault.load(vaultIdT)
+  let vaultT = resolveRouterVault(routerT, event.address)
   if (vaultT === null) return
   let sdId = vaultT.id + "-" + event.params.strat.toHexString().toLowerCase()
   let sd = StrategyDeployment.load(sdId)
@@ -2313,10 +2331,7 @@ export function handleWeightsSet(event: WeightsSetEvent): void {
   // Update StrategyDeployment weights
   let routerW = StrategyRouter.load(routerId)
   if (routerW === null) return
-  let routerCoreW = routerW.core
-  if (routerCoreW === null) return
-  let vaultIdW = getVaultId(Address.fromBytes(routerCoreW))
-  let vaultW = Vault.load(vaultIdW)
+  let vaultW = resolveRouterVault(routerW, event.address)
   if (vaultW === null) return
   for (let j = 0; j < strats.length; j++) {
     let sdIdW = vaultW.id + "-" + strats[j].toHexString().toLowerCase()
