@@ -18,13 +18,44 @@ import {
 } from "./constants"
 
 // =============================================================================
+// PRICE RESULT CLASS
+// =============================================================================
+
+export class PriceResult {
+  price: BigDecimal = BigDecimal.zero()
+  status: string = "MISSING"  // VALID, STALE, FALLBACK, MISSING
+}
+
+// Staleness threshold: 24 hours (86400 seconds)
+// Aligned with Chainlink USDC/USD heartbeat on Arbitrum
+const STALENESS_THRESHOLD = BigInt.fromI32(86400)
+
+// =============================================================================
 // CHAINLINK PRICE FETCHING
 // =============================================================================
 
 /**
+ * Check if token has a Chainlink feed on current chain
+ */
+export function hasChainlinkFeed(token: Address): boolean {
+  let network = dataSource.network()
+
+  if (network == "arbitrum-one" && token.equals(USDC_ARBITRUM)) {
+    return true
+  }
+  if (network == "mainnet" && token.equals(USDC_ETHEREUM)) {
+    return true
+  }
+  if (network == "base" && token.equals(USDC_BASE)) {
+    return true
+  }
+  return false
+}
+
+/**
  * Get Chainlink feed address for a token on current chain
  */
-export function getChainlinkFeedForToken(token: Address): Address | null {
+export function getChainlinkFeedForToken(token: Address): Address {
   let network = dataSource.network()
 
   // Check if token is USDC on this network
@@ -38,11 +69,47 @@ export function getChainlinkFeedForToken(token: Address): Address | null {
     return CHAINLINK_USDC_USD_BASE
   }
 
-  return null
+  return Address.zero()
 }
 
 /**
- * Fetch price from Chainlink oracle
+ * Fetch price from Chainlink oracle with staleness check
+ * Returns PriceResult with price and status
+ */
+export function fetchChainlinkPriceWithStatus(feedAddress: Address, currentTimestamp: BigInt): PriceResult {
+  let result = new PriceResult()
+  let contract = ChainlinkAggregator.bind(feedAddress)
+
+  let latestRoundResult = contract.try_latestRoundData()
+  if (latestRoundResult.reverted) {
+    result.status = "MISSING"
+    return result
+  }
+
+  let answer = latestRoundResult.value.value1 // answer is at index 1
+  let updatedAt = latestRoundResult.value.value3 // updatedAt is at index 3
+
+  if (answer.le(ZERO_BI)) {
+    result.status = "MISSING"
+    return result
+  }
+
+  // Check staleness (1 hour threshold)
+  let age = currentTimestamp.minus(updatedAt)
+  if (age.gt(STALENESS_THRESHOLD)) {
+    result.price = answer.toBigDecimal().div(ONE_E8_BD)
+    result.status = "STALE"
+    return result
+  }
+
+  // Valid price
+  result.price = answer.toBigDecimal().div(ONE_E8_BD)
+  result.status = "VALID"
+  return result
+}
+
+/**
+ * Fetch price from Chainlink oracle (legacy, for backward compatibility)
  * Returns price in USD with 8 decimals (Chainlink standard)
  */
 export function fetchChainlinkPrice(feedAddress: Address): BigDecimal {
@@ -86,6 +153,7 @@ export function getOrCreateTokenPrice(
     tokenPrice.decimals = decimals
     tokenPrice.priceUsd = ZERO_BD
     tokenPrice.source = "NONE"
+    tokenPrice.status = "MISSING"
     tokenPrice.updatedAt = ZERO_BI
     tokenPrice.updatedAtBlock = ZERO_BI
   }
@@ -96,39 +164,78 @@ export function getOrCreateTokenPrice(
 /**
  * Update token price from all available sources
  * Priority: Chainlink > Config > Default
+ * Returns PriceResult with price and status
+ */
+export function updateTokenPriceWithStatus(
+  token: Address,
+  chainId: i32,
+  block: ethereum.Block
+): PriceResult {
+  let network = dataSource.network()
+  let result = new PriceResult()
+
+  // Try Chainlink first
+  if (hasChainlinkFeed(token)) {
+    let feedAddress = getChainlinkFeedForToken(token)
+    let chainlinkResult = fetchChainlinkPriceWithStatus(feedAddress, block.timestamp)
+
+    if (chainlinkResult.price.gt(ZERO_BD)) {
+      // Update TokenPrice entity
+      let tokenPrice = TokenPrice.load(token.toHexString().toLowerCase() + "-" + chainId.toString())
+      if (tokenPrice != null) {
+        tokenPrice.priceUsd = chainlinkResult.price
+        tokenPrice.source = "CHAINLINK"
+        tokenPrice.status = chainlinkResult.status
+        tokenPrice.updatedAt = block.timestamp
+        tokenPrice.updatedAtBlock = block.number
+        tokenPrice.save()
+      }
+      return chainlinkResult
+    }
+  }
+
+  // Fallback: USDC is always $1.00
+  if (isUSDC(token, network)) {
+    result.price = DEFAULT_USDC_PRICE
+    result.status = "FALLBACK"
+
+    // Update TokenPrice entity with fallback
+    let tokenPrice = TokenPrice.load(token.toHexString().toLowerCase() + "-" + chainId.toString())
+    if (tokenPrice != null) {
+      tokenPrice.priceUsd = DEFAULT_USDC_PRICE
+      tokenPrice.source = "FALLBACK"
+      tokenPrice.status = "FALLBACK"
+      tokenPrice.updatedAt = block.timestamp
+      tokenPrice.updatedAtBlock = block.number
+      tokenPrice.save()
+    }
+    return result
+  }
+
+  // No price available - mark as MISSING
+  result.price = ZERO_BD
+  result.status = "MISSING"
+
+  let tokenPrice = TokenPrice.load(token.toHexString().toLowerCase() + "-" + chainId.toString())
+  if (tokenPrice != null) {
+    tokenPrice.status = "MISSING"
+    tokenPrice.save()
+  }
+
+  return result
+}
+
+/**
+ * Update token price from all available sources (legacy)
+ * Priority: Chainlink > Config > Default
  */
 export function updateTokenPrice(
   token: Address,
   chainId: i32,
   block: ethereum.Block
 ): BigDecimal {
-  let network = dataSource.network()
-
-  // Try Chainlink first
-  let feedAddress = getChainlinkFeedForToken(token)
-  if (feedAddress != null) {
-    let price = fetchChainlinkPrice(feedAddress)
-    if (price.gt(ZERO_BD)) {
-      // Update TokenPrice entity
-      let tokenPrice = TokenPrice.load(token.toHexString().toLowerCase() + "-" + chainId.toString())
-      if (tokenPrice != null) {
-        tokenPrice.priceUsd = price
-        tokenPrice.source = "CHAINLINK"
-        tokenPrice.updatedAt = block.timestamp
-        tokenPrice.updatedAtBlock = block.number
-        tokenPrice.save()
-      }
-      return price
-    }
-  }
-
-  // Fallback: USDC is always $1.00
-  if (isUSDC(token, network)) {
-    return DEFAULT_USDC_PRICE
-  }
-
-  // No price available
-  return ZERO_BD
+  let result = updateTokenPriceWithStatus(token, chainId, block)
+  return result.price
 }
 
 /**

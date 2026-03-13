@@ -26,8 +26,9 @@ export class PriceResult {
   status: string = "MISSING"  // VALID, STALE, FALLBACK, MISSING
 }
 
-// Staleness threshold: 1 hour (3600 seconds)
-const STALENESS_THRESHOLD = BigInt.fromI32(3600)
+// Staleness threshold: 24 hours (86400 seconds)
+// Aligned with Chainlink USDC/USD heartbeat on Arbitrum
+const STALENESS_THRESHOLD = BigInt.fromI32(86400)
 
 // =============================================================================
 // CHAINLINK PRICE FETCHING
