@@ -161,6 +161,9 @@ import { Strategy as StrategyContract } from "../generated/templates/StrategyRou
 // StrategyRouter contract binding (for on-chain core() reads when CoreSet event was missed)
 import { StrategyRouter as StrategyRouterContract } from "../generated/templates/StrategyRouterTemplate/StrategyRouter"
 
+// CoreVault contract binding (for on-chain component reads when events were missed)
+import { Vault as VaultContract } from "../generated/templates/VaultTemplate/Vault"
+
 // VaultUpkeep Events + Contract binding
 import {
   UpkeepPerformed as UpkeepPerformedEvent,
@@ -318,7 +321,8 @@ import {
   VaultDeployment,
   StrategyDeployment,
   ProtocolDeployment,
-  StrategyRouterSeen
+  StrategyRouterSeen,
+  StrategyVaultIndex
 } from "../generated/schema"
 
 // Template for dynamic vault indexing
@@ -336,7 +340,8 @@ import {
 import {
   getTokenPriceUsd,
   convertToUsd,
-  getOrCreateTokenPrice
+  getOrCreateTokenPrice,
+  initializeChainlinkFeed
 } from "./helpers/pricing"
 
 import {
@@ -395,6 +400,88 @@ function ensureRouterTemplate(routerAddr: Address, timestamp: BigInt): void {
     seen = new StrategyRouterSeen(routerId)
     seen.createdAt = timestamp
     seen.save()
+  }
+}
+
+// Chainlink feed registry — extend when adding new asset vaults
+// Returns [feedAddress, decimals, description] or null if asset unknown
+function getChainlinkFeedConfig(asset: Address): string[] | null {
+  let addr = asset.toHexString().toLowerCase()
+  // USDC on Arbitrum
+  if (addr == "0xaf88d065e77c8cc2239327c5edb3a432268e5831") {
+    return ["0x50834F3163758fcC1Df9973b6e91f0F0F0434aD3", "8", "USDC / USD"]
+  }
+  // Future: add WETH, WBTC, etc.
+  return null
+}
+
+/**
+ * Backfill VaultDeployment component fields via on-chain reads.
+ * Component update events (HealthRegistryUpdated, IncentivesUpdated, etc.) fire during
+ * vault deployment BEFORE VaultTemplate.create(), so they are missed by the subgraph.
+ * This function reads the current on-chain state and populates the VaultDeployment.
+ */
+function resolveVaultComponents(vault: Vault, vaultAddress: Address, timestamp: BigInt, block: ethereum.Block): void {
+  let vd = getOrCreateVaultDeployment(vault, timestamp, block)
+  let contract = VaultContract.bind(vaultAddress)
+  let changed = false
+
+  // bufferManager
+  if (vault.bufferManager === null) {
+    let result = contract.try_bufferManager()
+    if (!result.reverted && result.value.notEqual(Address.zero())) {
+      vault.bufferManager = result.value
+      vd.bufferManager = result.value
+      changed = true
+    }
+  }
+
+  // healthRegistry
+  if (vault.healthRegistry === null) {
+    let result = contract.try_healthRegistry()
+    if (!result.reverted && result.value.notEqual(Address.zero())) {
+      vault.healthRegistry = result.value
+      vd.healthRegistry = result.value
+      changed = true
+    }
+  }
+
+  // incentives
+  if (vault.incentives === null) {
+    let result = contract.try_incentives()
+    if (!result.reverted && result.value.notEqual(Address.zero())) {
+      vault.incentives = result.value
+      vd.incentives = result.value
+      changed = true
+    }
+  }
+
+  // vetoer
+  if (vault.vetoer === null) {
+    let result = contract.try_vetoer()
+    if (!result.reverted && result.value.notEqual(Address.zero())) {
+      vault.vetoer = result.value
+      vd.vetoer = result.value
+      changed = true
+    }
+  }
+
+  // guardian
+  if (vault.guardian === null) {
+    let result = contract.try_guardian()
+    if (!result.reverted && result.value.notEqual(Address.zero())) {
+      vault.guardian = result.value
+      vd.guardian = result.value
+      changed = true
+    }
+  }
+
+  if (changed) {
+    vault.updatedAt = timestamp
+    vault.save()
+    vd.updatedAt = timestamp
+    vd.updatedAtBlock = block.number
+    vd.save()
   }
 }
 
@@ -533,10 +620,26 @@ function handleVaultCreationInternal(
       vault.assetDecimals
     )
     tokenPrice.save()
+
+    // Initialize Chainlink feed entity if known asset
+    let feedConfig = getChainlinkFeedConfig(assetAddr)
+    if (feedConfig !== null) {
+      initializeChainlinkFeed(
+        assetAddr,
+        chainId,
+        Address.fromString(feedConfig[0]),
+        I32.parseInt(feedConfig[1]),
+        feedConfig[2]
+      )
+    }
   }
 
   // Start indexing this vault's events
   VaultTemplate.create(vaultAddr)
+
+  // Backfill component fields that were set during deploy
+  // (their events fired before VaultTemplate was created, so they were missed)
+  resolveVaultComponents(vault, vaultAddr, block.timestamp, block)
 }
 
 /**
@@ -2260,6 +2363,13 @@ export function handleStrategyRegistered(event: StrategyRegisteredEvent): void {
   )
   sd.save()
 
+  // Reverse index: strategyAddress-chainId → vault + deployment
+  let indexId = event.params.strat.toHexString().toLowerCase() + "-" + chainId.toString()
+  let idx = new StrategyVaultIndex(indexId)
+  idx.vault = vault2.id
+  idx.strategyDeployment = sd.id
+  idx.save()
+
 }
 
 export function handleStrategyToggled(event: StrategyToggledEvent): void {
@@ -3618,6 +3728,25 @@ export function handleLendingStrategyAdded(event: LendingStrategyAddedEvent): vo
     event.block
   )
   binding.enabled = true
+
+  // Link binding ↔ StrategyDeployment via reverse index
+  let indexId = event.params.strategy.toHexString().toLowerCase() + "-" + chainId.toString()
+  let idx = StrategyVaultIndex.load(indexId)
+  if (idx != null) {
+    binding.vault = idx.vault
+    binding.strategyDeployment = idx.strategyDeployment
+
+    // Also populate StrategyDeployment.strategyUpkeep / upkeepKind
+    let sd = StrategyDeployment.load(idx.strategyDeployment)
+    if (sd != null) {
+      sd.strategyUpkeep = event.address
+      sd.upkeepKind = "lending"
+      sd.updatedAt = event.block.timestamp
+      sd.updatedAtBlock = event.block.number
+      sd.save()
+    }
+  }
+
   binding.save()
 }
 

@@ -1527,6 +1527,14 @@ type StrategyUpkeepBinding @entity {
   updatedAtBlock: BigInt!
 }
 
+# Reverse index: strategyAddress-chainId → vault + deployment IDs.
+# Populated by handleStrategyRegistered, consumed by upkeep handlers.
+type StrategyVaultIndex @entity {
+  id: ID!                          # strategyAddress-chainId (lowercase)
+  vault: Vault!
+  strategyDeployment: StrategyDeployment!
+}
+
 # Guard entity to track already-created StrategyRouter datasource templates
 # Avoids nullable Bytes comparison that crashes AssemblyScript
 type StrategyRouterSeen @entity {
