@@ -44,9 +44,9 @@ dataSources:
     name: VaultUpkeep
     network: arbitrum-one
     source:
-      address: "0xBaf504A3e72063101BDD460151123ceeFFd3b2f0"
+      address: "0xF82f9DAc349f0995168e83434729F522C14E9d68"
       abi: VaultUpkeep
-      startBlock: 440464138
+      startBlock: 443690000
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
