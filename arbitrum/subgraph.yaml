@@ -65,7 +65,7 @@ dataSources:
     name: GlobalConfig
     network: arbitrum-one
     source:
-      address: "0xa7DFC13eE516FE8af48d41b09d3cA5A6f0cF3FEC"
+      address: "0x4A6a4E1D3120Bd016C96cf035d3FAB99D4a0c6Ce"
       abi: GlobalConfig
       startBlock: 440464138
     mapping:
