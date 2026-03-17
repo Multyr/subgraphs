@@ -44,7 +44,7 @@ dataSources:
     name: VaultUpkeep
     network: arbitrum-one
     source:
-      address: "0xF82f9DAc349f0995168e83434729F522C14E9d68"
+      address: "0x7aB7B0d2870F569B1BAc8df631D28eb71A500b46"
       abi: VaultUpkeep
       startBlock: 443690000
     mapping:
@@ -128,7 +128,7 @@ dataSources:
     name: FeeDistributor
     network: arbitrum-one
     source:
-      address: "0x1fCe0053B7f663Dc655FB1625cB6eC3513Be727b"
+      address: "0x855018a8BCe730ed528b426E78e9A5b28fAb457E"
       abi: FeeDistributor
       startBlock: 440478600
     mapping:
@@ -234,7 +234,7 @@ dataSources:
     name: DepositRouter
     network: arbitrum-one
     source:
-      address: "0xA635c49C992C13d9693D9aBd9324f776e6a93Da4"
+      address: "0x6D97dc240f5bC53af3bbA0b9e9868b1C4c2a21DA"
       abi: DepositRouter
       startBlock: 440478600
     mapping:
