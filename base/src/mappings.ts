@@ -3127,6 +3127,7 @@ export function handleDefaultOracleConfigSet(event: DefaultOracleConfigSetEvent)
   let chainId2 = getChainIdFromNetwork(dataSource.network())
   let pd = getOrCreateProtocolDeployment(chainId2, event.block)
   pd.globalConfig = event.address
+  pd.priceOracle = event.params.oracle
   pd.updatedAt = event.block.timestamp
   pd.updatedAtBlock = event.block.number
   pd.save()

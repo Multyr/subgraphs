@@ -1445,6 +1445,7 @@ type ProtocolDeployment @entity {
   # Shared components
   vaultFactory: Bytes
   globalConfig: Bytes
+  priceOracle: Bytes
   depositRouter: Bytes
   referralBinding: Bytes
   opsCollector: Bytes

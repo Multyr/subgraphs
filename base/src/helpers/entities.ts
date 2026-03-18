@@ -641,6 +641,7 @@ export function getOrCreateProtocolDeployment(chainId: i32, block: ethereum.Bloc
     pd.chainId = chainId
     pd.vaultFactory = null
     pd.globalConfig = null
+    pd.priceOracle = null
     pd.depositRouter = null
     pd.referralBinding = null
     pd.opsCollector = null
