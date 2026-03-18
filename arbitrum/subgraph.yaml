@@ -280,6 +280,61 @@ dataSources:
           handler: handlePeripheryUpkeepPerformed
       file: ./src/mappings.ts
 
+  - kind: ethereum/contract
+    name: StrategyUpkeep
+    network: arbitrum-one
+    source:
+      address: "0x9D2c6AF78F57fEAe4322e86E5952Da4e414ada82"
+      abi: StrategyUpkeep
+      startBlock: 442800000
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - UpkeepAction
+        - StrategyUpkeepBinding
+        - StrategyDeployment
+      abis:
+        - name: StrategyUpkeep
+          file: ./abis/StrategyUpkeep.json
+      eventHandlers:
+        - event: UpkeepPerformed(indexed uint8,indexed address,uint256)
+          handler: handleStrategyUpkeepPerformed
+        - event: UpkeepErrored(indexed uint8,indexed address,bytes)
+          handler: handleStrategyUpkeepErrored
+        - event: StrategyAdded(indexed address)
+          handler: handleUpkeepStrategyAdded
+        - event: StrategyRemoved(indexed address)
+          handler: handleUpkeepStrategyRemoved
+        - event: StrategyToggled(indexed address,bool)
+          handler: handleUpkeepStrategyToggled
+      file: ./src/mappings.ts
+
+  - kind: ethereum/contract
+    name: FeeCollectorUpkeep
+    network: arbitrum-one
+    source:
+      address: "0x5D4e0b9AA48234bC2Cb10b0A2f97430A4a9a8EA8"
+      abi: FeeCollectorUpkeep
+      startBlock: 442800000
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - UpkeepAction
+        - ProtocolDeployment
+      abis:
+        - name: FeeCollectorUpkeep
+          file: ./abis/FeeCollectorUpkeep.json
+      eventHandlers:
+        - event: DistributionTriggered(indexed address,uint256)
+          handler: handleFeeDistributionTriggered
+        - event: DistributionFailed(indexed address,bytes)
+          handler: handleFeeDistributionFailed
+      file: ./src/mappings.ts
+
 templates:
   - kind: ethereum/contract
     name: VaultTemplate
