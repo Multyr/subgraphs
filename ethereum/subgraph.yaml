@@ -1,7 +1,7 @@
 specVersion: 0.0.5
 schema:
   file: ../schema.graphql
-description: Multyr Vault Subgraph - Arbitrum One
+description: Multyr Vault Subgraph - Ethereum
 repository: https://github.com/multyr/vault-subgraph
 
 dataSources:
@@ -40,6 +40,10 @@ dataSources:
           handler: handleVaultCreated
         - event: VaultProductionReady(indexed address)
           handler: handleVaultProductionReady
+        - event: VaultDeprecated(indexed address)
+          handler: handleVaultDeprecated
+        - event: VaultStatusChanged(indexed address,string,string)
+          handler: handleVaultStatusChanged
       file: ./src/mappings.ts
 
   - kind: ethereum/contract
@@ -295,18 +299,14 @@ dataSources:
           handler: handlePeripheryUpkeepPerformed
       file: ./src/mappings.ts
 
-  # =========================================================================
-  # STRATEGY & FEE UPKEEP AUTOMATION (not deployed on ethereum yet)
-  # =========================================================================
-
   - kind: ethereum/contract
-    name: LendingStrategyUpkeep
+    name: StrategyUpkeep
     network: mainnet
     source:
-      # TODO: Replace with actual deployed LendingStrategyUpkeep address
-      address: "0x0000000000000000000000000000000000000000"
-      abi: LendingStrategyUpkeep
-      startBlock: 0
+      # Not deployed yet on Ethereum — dead address + future startBlock
+      address: "0x0000000000000000000000000000000000000001"
+      abi: StrategyUpkeep
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -314,30 +314,31 @@ dataSources:
       entities:
         - UpkeepAction
         - StrategyUpkeepBinding
+        - StrategyDeployment
       abis:
-        - name: LendingStrategyUpkeep
-          file: ./abis/LendingStrategyUpkeep.json
+        - name: StrategyUpkeep
+          file: ./abis/StrategyUpkeep.json
       eventHandlers:
-        - event: StrategyAdded(indexed address)
-          handler: handleLendingStrategyAdded
-        - event: StrategyRemoved(indexed address)
-          handler: handleLendingStrategyRemoved
-        - event: StrategyToggled(indexed address,bool)
-          handler: handleLendingStrategyToggled
         - event: UpkeepPerformed(indexed uint8,indexed address,uint256)
-          handler: handleLendingUpkeepPerformed
+          handler: handleStrategyUpkeepPerformed
         - event: UpkeepErrored(indexed uint8,indexed address,bytes)
-          handler: handleLendingUpkeepErrored
+          handler: handleStrategyUpkeepErrored
+        - event: StrategyAdded(indexed address)
+          handler: handleUpkeepStrategyAdded
+        - event: StrategyRemoved(indexed address)
+          handler: handleUpkeepStrategyRemoved
+        - event: StrategyToggled(indexed address,bool)
+          handler: handleUpkeepStrategyToggled
       file: ./src/mappings.ts
 
   - kind: ethereum/contract
     name: FeeCollectorUpkeep
     network: mainnet
     source:
-      # TODO: Replace with actual deployed FeeCollectorUpkeep address
-      address: "0x0000000000000000000000000000000000000000"
+      # Not deployed yet on Ethereum — dead address + future startBlock
+      address: "0x0000000000000000000000000000000000000002"
       abi: FeeCollectorUpkeep
-      startBlock: 0
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -349,9 +350,9 @@ dataSources:
         - name: FeeCollectorUpkeep
           file: ./abis/FeeCollectorUpkeep.json
       eventHandlers:
-        - event: DistributionTriggered(uint256,uint256)
+        - event: DistributionTriggered(indexed address,uint256)
           handler: handleFeeDistributionTriggered
-        - event: DistributionFailed(bytes)
+        - event: DistributionFailed(indexed address,bytes)
           handler: handleFeeDistributionFailed
       file: ./src/mappings.ts
 
