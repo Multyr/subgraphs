@@ -19,12 +19,36 @@ Questo registry copre **esclusivamente** quei campi. Non è un fallback generico
 3. Mai usare il bootstrap per campi che il subgraph può popolare
 ```
 
+## Causa root
+
+Il deploy script v4 esegue le operazioni in questo ordine:
+
+```
+Blocco 442802486: EcosystemConfigured (bufferManager, strategyRouter, guardian, vetoer)
+Blocco 442802489: FeeCollectorSet
+Blocco 442802489: setInitialFees → FeeParamsAccepted (depBps=50, witBps=100)
+Blocco 442802523: WarmAdapterApproved (x2)
+Blocco 442802530: registerVault nella factory → VaultDeployed → VaultTemplate creato QUI
+```
+
+Il VaultTemplate viene creato solo quando `handleVaultDeployed` processa l'evento della factory.
+Tutti gli eventi emessi dal vault PRIMA di quel blocco sono **persi** — il template non esisteva.
+
+Per i futuri deploy: `registerVault` deve essere il **primo step**, non l'ultimo.
+
 ## Campi coperti
 
-| Campo | Motivo non recuperabile |
-|-------|------------------------|
-| `queueModule` | Emesso solo da `VaultRoutingConfigured` a deploy-time. Nessun getter on-chain. |
-| `adminModule` | Stesso evento, stesso limite. |
+| Campo | Evento perso | Motivo |
+|-------|-------------|--------|
+| `queueModule` | `VaultRoutingConfigured` | Emesso da DeployLib prima del registerVault |
+| `adminModule` | `VaultRoutingConfigured` | Stesso evento |
+| `bufferManager` | `EcosystemConfigured` | Blocco 442802486, 44 blocchi prima del template |
+| `strategyRouter` | `EcosystemConfigured` | Stesso evento |
+| `guardian` | `EcosystemConfigured` | Stesso evento |
+| `vetoer` | `EcosystemConfigured` | Stesso evento |
+| `healthRegistry` | `EcosystemConfigured` | Stesso evento |
+| `depositFeeBps` | `FeeParamsAccepted` | Blocco 442802489, 41 blocchi prima del template |
+| `withdrawFeeBps` | `FeeParamsAccepted` | Stesso evento |
 
 ## Registry
 
@@ -39,8 +63,20 @@ Questo registry copre **esclusivamente** quei campi. Non è un fallback generico
       "version": "v4",
       "queueModule": "0x41815C7774caad6E051d1F23375526F07AF85eBa",
       "adminModule": "0x17a342233b47f71038a2f05c1220d32ab8d43a03",
-      "deployBlock": 442800000,
-      "note": "VaultRoutingConfigured emesso al blocco ~442800000, VaultTemplate creato al blocco 443070412 (270K blocchi dopo)"
+      "erc4626Module": "0x72cB278dFD4DB3882b9aFbB45c0d63D93985683f",
+      "liquidityOpsModule": "0x2cf61ad75eec17529c891d85519737eb1f260d80",
+      "bufferManager": "0xfad82ff14623a74dbc5fa647e6892a05351d4507",
+      "strategyRouter": "0x4F3434cBA996ebc44587DF95742048F04871480f",
+      "healthRegistry": "0x4058C04B195fDbEE36838f3497D3e2137C7A5256",
+      "guardian": "0x7407E68a5553E948eed862f19fc6B292eb48d677",
+      "vetoer": "0xF0c1A33d6741EB2dc174a0977095587a0648f1D7",
+      "depositFeeBps": 50,
+      "withdrawFeeBps": 100,
+      "immediateExitPenaltyBps": 100,
+      "forceExitPenaltyBps": 150,
+      "deployBlock": 442802530,
+      "wiringBlock": 442802486,
+      "note": "Tutti gli eventi di wiring emessi ai blocchi 442802486-442802523, registerVault al blocco 442802530. VaultTemplate creato 44 blocchi dopo il primo evento."
     }
   ]
 }

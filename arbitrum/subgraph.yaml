@@ -44,6 +44,43 @@ dataSources:
           handler: handleVaultStatusChanged
       file: ./src/mappings.ts
 
+  # Legacy VaultFactory v1 — captures VaultDeployed for CoreVault v4
+  # registered here at block ~442800000, before VaultFactory v2 existed.
+  # Without this, the VaultTemplate is created too late and all wiring events are lost.
+  - kind: ethereum/contract
+    name: VaultFactoryV1
+    network: arbitrum-one
+    source:
+      address: "0x0DB1fE52106D6c7FaC4D4DC33ad0097b0Ef70aff"
+      abi: VaultFactory
+      startBlock: 440464138
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Protocol
+        - VaultFactory
+        - Vault
+        - TokenPrice
+      abis:
+        - name: VaultFactory
+          file: ./abis/VaultFactory.json
+        - name: Vault
+          file: ./abis/Vault.json
+        - name: ERC20
+          file: ./abis/ERC20.json
+        - name: ChainlinkAggregator
+          file: ./abis/ChainlinkAggregator.json
+      eventHandlers:
+        - event: VaultDeployed(indexed address,indexed address,indexed address,address,string,string)
+          handler: handleVaultDeployed
+        - event: VaultCreated(indexed address,indexed address,address,address,string,string)
+          handler: handleVaultCreated
+        - event: VaultProductionReady(indexed address)
+          handler: handleVaultProductionReady
+      file: ./src/mappings.ts
+
   - kind: ethereum/contract
     name: VaultUpkeep
     network: arbitrum-one

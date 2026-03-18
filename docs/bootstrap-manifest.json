@@ -1,7 +1,8 @@
 {
-  "description": "Bootstrap registry for non-recoverable deploy-time wiring. Use ONLY when subgraph VaultDeployment fields are null.",
-  "version": "1.0.0",
-  "updatedAt": "2026-03-18",
+  "description": "Bootstrap registry for non-recoverable deploy-time wiring. Use ONLY when subgraph VaultDeployment/Vault fields are null.",
+  "version": "1.1.0",
+  "updatedAt": "2026-03-19",
+  "rootCause": "Deploy script calls registerVault() as LAST step. All wiring events (EcosystemConfigured, FeeParamsAccepted, VaultRoutingConfigured) are emitted BEFORE the VaultTemplate is created by the subgraph. Fix for future deploys: registerVault() FIRST.",
   "chains": {
     "42161": {
       "name": "Arbitrum One",
@@ -13,7 +14,18 @@
           "adminModule": "0x17a342233b47f71038a2f05c1220d32ab8d43a03",
           "erc4626Module": "0x72cB278dFD4DB3882b9aFbB45c0d63D93985683f",
           "liquidityOpsModule": "0x2cf61ad75eec17529c891d85519737eb1f260d80",
-          "deployBlock": 442800000,
+          "bufferManager": "0xfad82ff14623a74dbc5fa647e6892a05351d4507",
+          "strategyRouter": "0x4F3434cBA996ebc44587DF95742048F04871480f",
+          "healthRegistry": "0x4058C04B195fDbEE36838f3497D3e2137C7A5256",
+          "guardian": "0x7407E68a5553E948eed862f19fc6B292eb48d677",
+          "vetoer": "0xF0c1A33d6741EB2dc174a0977095587a0648f1D7",
+          "feeCollector": "0x4fAd6B489dad5f0b7d7ADF8aa7cFC9c540C2Ac93",
+          "depositFeeBps": 50,
+          "withdrawFeeBps": 100,
+          "immediateExitPenaltyBps": 100,
+          "forceExitPenaltyBps": 150,
+          "deployBlock": 442802530,
+          "wiringBlock": 442802486,
           "routingFrozen": true
         }
       ]
