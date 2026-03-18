@@ -8,12 +8,7 @@ import {
   UserPositionDayData,
   Transaction,
   ClaimRequest,
-  User,
-  ProtocolDeployment,
-  VaultDeployment,
-  StrategyDeployment,
-  VaultUpkeepBinding,
-  StrategyUpkeepBinding
+  User
 } from "../../generated/schema"
 import { Vault as VaultContract } from "../../generated/templates/VaultTemplate/Vault"
 import { ERC20 } from "../../generated/templates/VaultTemplate/ERC20"
@@ -28,7 +23,7 @@ import {
   getChainIdFromNetwork,
   safeDiv
 } from "./constants"
-import { getTokenPriceUsd, convertToUsd, updateTokenPriceWithStatus } from "./pricing"
+import { getTokenPriceUsd, convertToUsd } from "./pricing"
 
 // =============================================================================
 // PROTOCOL ENTITY
@@ -135,7 +130,6 @@ export function getOrCreateVault(
     vault.sharePrice = ZERO_BI
     vault.tvlUsd = ZERO_BD
     vault.assetPriceUsd = ZERO_BD
-    vault.priceStatus = "MISSING"
 
     // Performance
     vault.apy1d = ZERO_BD
@@ -150,6 +144,8 @@ export function getOrCreateVault(
 
     // Status
     vault.status = "ACTIVE"
+    vault.statusLabel = "ACTIVE"
+    vault.statusNote = ""
     vault.isActive = true
     vault.depositsEnabled = true
     vault.withdrawalsEnabled = true
@@ -175,9 +171,8 @@ export function getOrCreateVault(
 }
 
 /**
- * Decimals-aware share price calculation.
- * Produces PPS in WAD 1e18, coerente con VaultPpsSnapshot.pps.
- * Core formula: pps = ta * 10^(18 + shareDecimals - assetDecimals) / ts
+ * Canonical share price calculation using real vault/asset decimals.
+ * Result is in WAD (1e18). Formula: totalAssets * 10^(18 + shareDecimals - assetDecimals) / totalSupply
  */
 export function updateVaultSharePriceCanonical(
   vault: Vault, totalAssets: BigInt, totalSupply: BigInt
@@ -185,9 +180,9 @@ export function updateVaultSharePriceCanonical(
   vault.totalAssets = totalAssets
   vault.totalSupply = totalSupply
   if (totalSupply.gt(ZERO_BI)) {
-    let scalingExp = 18 + vault.decimals - vault.assetDecimals
-    let scalingFactor = BigInt.fromI32(10).pow(u8(scalingExp))
-    vault.sharePrice = totalAssets.times(scalingFactor).div(totalSupply)
+    let scalePower = 18 + vault.decimals - vault.assetDecimals
+    let scale = BigInt.fromI32(10).pow(u8(scalePower))
+    vault.sharePrice = totalAssets.times(scale).div(totalSupply)
   } else {
     vault.sharePrice = ONE_E18
   }
@@ -202,23 +197,18 @@ export function refreshVaultState(vault: Vault, block: ethereum.Block): void {
 
   // Fetch current state
   let totalAssetsResult = contract.try_totalAssets()
-  if (!totalAssetsResult.reverted) {
-    vault.totalAssets = totalAssetsResult.value
-  }
-
   let totalSupplyResult = contract.try_totalSupply()
-  if (!totalSupplyResult.reverted) {
-    vault.totalSupply = totalSupplyResult.value
-  }
 
-  // Calculate share price using decimals-aware formula
-  updateVaultSharePriceCanonical(vault, vault.totalAssets, vault.totalSupply)
+  let ta = !totalAssetsResult.reverted ? totalAssetsResult.value : vault.totalAssets
+  let ts = !totalSupplyResult.reverted ? totalSupplyResult.value : vault.totalSupply
 
-  // Update USD values with status
-  let priceResult = updateTokenPriceWithStatus(Address.fromBytes(vault.asset), chainId, block)
-  vault.assetPriceUsd = priceResult.price
-  vault.tvlUsd = convertToUsd(vault.totalAssets, vault.assetDecimals, priceResult.price)
-  vault.priceStatus = priceResult.status
+  // Update share price using canonical formula (decimals-aware)
+  updateVaultSharePriceCanonical(vault, ta, ts)
+
+  // Update USD values
+  let assetPrice = getTokenPriceUsd(Address.fromBytes(vault.asset), chainId, block)
+  vault.assetPriceUsd = assetPrice
+  vault.tvlUsd = convertToUsd(vault.totalAssets, vault.assetDecimals, assetPrice)
 
   vault.updatedAt = block.timestamp
   vault.save()
@@ -276,121 +266,112 @@ export function getOrCreateVaultDayData(vault: Vault, timestamp: BigInt): VaultD
 }
 
 /**
- * Update vault day data APY with 30-day lookback.
- * Finds the most recent VaultDayData with valid sharePrice within 30 days,
- * normalizes the return by the number of days between snapshots.
+ * Canonical snapshot: copies vault state to day data, computes APY, saves vault.
+ */
+export function snapshotVaultDayData(vault: Vault, block: ethereum.Block): void {
+  let dayId = block.timestamp.toI32() / SECONDS_PER_DAY
+  let dayData = getOrCreateVaultDayData(vault, block.timestamp)
+
+  dayData.totalAssets = vault.totalAssets
+  dayData.totalSupply = vault.totalSupply
+  dayData.sharePrice = vault.sharePrice
+  dayData.tvlUsd = vault.tvlUsd
+  dayData.assetPriceUsd = vault.assetPriceUsd
+
+  updateVaultDayDataApy(dayData)
+  dayData.save()
+
+  updateVaultApyMetrics(vault, dayId)
+  vault.save()
+}
+
+/**
+ * Update vault day data APY with lookback up to 30 days
  */
 export function updateVaultDayDataApy(dayData: VaultDayData): void {
-  if (dayData.sharePrice.equals(ZERO_BI)) {
+  let currentPrice = dayData.sharePrice.toBigDecimal().div(ONE_E18_BD)
+  if (currentPrice.le(ZERO_BD)) {
     dayData.dailyReturn = ZERO_BD
     dayData.apy = ZERO_BD
     return
   }
 
-  let prevData: VaultDayData | null = null
+  let prevPrice = ZERO_BD
   let daysDelta = 0
-  for (let i = 1; i <= 30; i++) {
+  for (let i: i32 = 1; i <= 30; i++) {
     let prevId = dayData.vault + "-" + (dayData.date - i).toString()
-    let candidate = VaultDayData.load(prevId)
-    if (candidate != null) {
-      if (candidate.sharePrice.gt(ZERO_BI)) {
-        prevData = candidate
+    let prev = VaultDayData.load(prevId)
+    if (prev !== null) {
+      if (prev.sharePrice.gt(ZERO_BI)) {
+        prevPrice = prev.sharePrice.toBigDecimal().div(ONE_E18_BD)
         daysDelta = i
         break
       }
     }
   }
 
-  if (prevData == null) {
+  if (prevPrice.le(ZERO_BD) || daysDelta == 0) {
     dayData.dailyReturn = ZERO_BD
     dayData.apy = ZERO_BD
     return
   }
 
-  if (daysDelta == 0) {
-    dayData.dailyReturn = ZERO_BD
-    dayData.apy = ZERO_BD
-    return
-  }
-
-  let prev = prevData as VaultDayData
-  let priceDiff = dayData.sharePrice.minus(prev.sharePrice)
-  let rawReturn = safeDiv(priceDiff.toBigDecimal(), prev.sharePrice.toBigDecimal())
-  let dailyReturn = safeDiv(rawReturn, BigDecimal.fromString(daysDelta.toString()))
-
+  let totalReturn = currentPrice.minus(prevPrice).div(prevPrice)
+  let dailyReturn = safeDiv(totalReturn, BigDecimal.fromString(daysDelta.toString()))
   dayData.dailyReturn = dailyReturn.times(HUNDRED_BD)
   dayData.apy = dailyReturn.times(DAYS_PER_YEAR_BD).times(HUNDRED_BD)
 }
 
 /**
- * Update vault APY metrics from day data.
- * Loops from 0 (current day) to include today's data.
+ * Update vault APY metrics from day data
  */
 export function updateVaultApyMetrics(vault: Vault, currentDayId: i32): void {
-  // 1-day APY = current day
+  // 1-day APY: current day (i=0)
   let day0Id = vault.id + "-" + currentDayId.toString()
   let day0Data = VaultDayData.load(day0Id)
-  if (day0Data != null) {
+  if (day0Data !== null) {
     vault.apy1d = day0Data.apy
+  } else {
+    vault.apy1d = ZERO_BD
   }
 
-  // 7-day APY (average of days 0..6)
+  // 7-day APY: average of days 0..6
   let sum7d = ZERO_BD
-  let count7d = 0
-  for (let i = 0; i < 7; i++) {
+  let count7d: i32 = 0
+  for (let i: i32 = 0; i < 7; i++) {
     let dayId = vault.id + "-" + (currentDayId - i).toString()
     let dayData = VaultDayData.load(dayId)
-    if (dayData != null) {
-      if (dayData.apy.notEqual(ZERO_BD)) {
+    if (dayData !== null) {
+      if (dayData.apy.gt(ZERO_BD)) {
         sum7d = sum7d.plus(dayData.apy)
         count7d++
       }
     }
   }
   if (count7d > 0) {
-    vault.apy7d = sum7d.div(BigDecimal.fromString(count7d.toString()))
+    vault.apy7d = safeDiv(sum7d, BigDecimal.fromString(count7d.toString()))
+  } else {
+    vault.apy7d = ZERO_BD
   }
 
-  // 30-day APY (average of days 0..29)
+  // 30-day APY: average of days 0..29
   let sum30d = ZERO_BD
-  let count30d = 0
-  for (let i = 0; i < 30; i++) {
+  let count30d: i32 = 0
+  for (let i: i32 = 0; i < 30; i++) {
     let dayId = vault.id + "-" + (currentDayId - i).toString()
     let dayData = VaultDayData.load(dayId)
-    if (dayData != null) {
-      if (dayData.apy.notEqual(ZERO_BD)) {
+    if (dayData !== null) {
+      if (dayData.apy.gt(ZERO_BD)) {
         sum30d = sum30d.plus(dayData.apy)
         count30d++
       }
     }
   }
   if (count30d > 0) {
-    vault.apy30d = sum30d.div(BigDecimal.fromString(count30d.toString()))
+    vault.apy30d = safeDiv(sum30d, BigDecimal.fromString(count30d.toString()))
+  } else {
+    vault.apy30d = ZERO_BD
   }
-}
-
-/**
- * Canonical snapshot helper: materializes vault state into VaultDayData,
- * recalculates APY, and persists everything including vault.save().
- */
-export function snapshotVaultDayData(vault: Vault, timestamp: BigInt): void {
-  let dayId = timestamp.toI32() / SECONDS_PER_DAY
-  let dayData = getOrCreateVaultDayData(vault, timestamp)
-
-  // Materialize current vault state
-  dayData.sharePrice = vault.sharePrice
-  dayData.totalAssets = vault.totalAssets
-  dayData.totalSupply = vault.totalSupply
-  dayData.tvlUsd = vault.tvlUsd
-  dayData.assetPriceUsd = vault.assetPriceUsd
-
-  // Recalculate APY
-  updateVaultDayDataApy(dayData)
-  dayData.save()
-
-  // Update rolling metrics on vault
-  updateVaultApyMetrics(vault, dayId)
-  vault.save()
 }
 
 // =============================================================================
@@ -529,7 +510,11 @@ export function createTransaction(
   user: Address,
   shares: BigInt,
   assets: BigInt,
-  block: ethereum.Block
+  block: ethereum.Block,
+  from: Address | null,
+  to: Address | null,
+  receiver: Address | null,
+  claimId: BigInt | null
 ): Transaction {
   let id = txHash.toHexString() + "-" + logIndex.toString()
 
@@ -544,6 +529,11 @@ export function createTransaction(
   tx.assets = assets
   tx.assetsUsd = convertToUsd(assets, vault.assetDecimals, vault.assetPriceUsd)
 
+  if (from != null) tx.from = from
+  if (to != null) tx.to = to
+  if (receiver != null) tx.receiver = receiver
+  if (claimId != null) tx.claimId = claimId
+
   tx.timestamp = block.timestamp
   tx.blockNumber = block.number
   tx.sharePrice = vault.sharePrice
@@ -552,23 +542,6 @@ export function createTransaction(
   tx.save()
 
   return tx
-}
-
-export function setTransactionTransferFields(tx: Transaction, from: Address, to: Address): void {
-  tx.from = from
-  tx.to = to
-  tx.receiver = to
-  tx.save()
-}
-
-export function setTransactionClaimId(tx: Transaction, claimId: BigInt): void {
-  tx.claimId = claimId
-  tx.save()
-}
-
-export function setTransactionReceiver(tx: Transaction, receiver: Address): void {
-  tx.receiver = receiver
-  tx.save()
 }
 
 // =============================================================================
@@ -633,205 +606,4 @@ export function updateUserAggregates(user: User, block: ethereum.Block): void {
   // Note: Full aggregation would require iterating positions
   // For now, we increment/decrement on position changes
   user.save()
-}
-
-// =============================================================================
-// OPS DEPLOYMENT ENTITIES
-// =============================================================================
-
-export function getOrCreateProtocolDeployment(
-  timestamp: BigInt, block: ethereum.Block
-): ProtocolDeployment {
-  let chainId = getChainIdFromNetwork(dataSource.network())
-  let id = "protocol-" + chainId.toString()
-
-  let pd = ProtocolDeployment.load(id)
-  if (pd == null) {
-    pd = new ProtocolDeployment(id)
-    pd.chainId = chainId
-    pd.vaultFactory = null
-    pd.globalConfig = null
-    pd.depositRouter = null
-    pd.referralBinding = null
-    pd.opsCollector = null
-    pd.feeDistributor = null
-    pd.epochPayout = null
-    pd.peripheryUpkeep = null
-    pd.feeCollectorUpkeep = null
-    pd.partnerRegistry = null
-    pd.updatedAt = timestamp
-    pd.updatedAtBlock = block.number
-  }
-
-  return pd
-}
-
-export function getOrCreateVaultDeployment(
-  vault: Vault, timestamp: BigInt, block: ethereum.Block
-): VaultDeployment {
-  let id = vault.id
-
-  let vd = VaultDeployment.load(id)
-  if (vd == null) {
-    vd = new VaultDeployment(id)
-    vd.vault = vault.id
-    vd.chainId = vault.chainId
-    vd.coreVault = Address.fromBytes(vault.address)
-    vd.bufferManager = null
-    vd.queueModule = null
-    vd.adminModule = null
-    vd.strategyRouter = null
-    vd.healthRegistry = null
-    vd.feeCollector = null
-    vd.oracle = null
-    vd.owner = null
-    vd.guardian = null
-    vd.vetoer = null
-    vd.paramsProvider = null
-    vd.incentives = null
-    vd.vaultUpkeep = null
-    vd.sealed = false
-
-    // Link to protocol deployment
-    let chainId = vault.chainId
-    let pdId = "protocol-" + chainId.toString()
-    let pd = ProtocolDeployment.load(pdId)
-    if (pd != null) {
-      vd.protocolDeployment = pd.id
-    }
-
-    vd.updatedAt = timestamp
-    vd.updatedAtBlock = block.number
-  }
-
-  return vd
-}
-
-/**
- * Copy all available component addresses from Vault entity to VaultDeployment.
- * Called after vault creation and any component update handler.
- */
-export function syncVaultDeploymentFromVault(
-  vault: Vault, timestamp: BigInt, block: ethereum.Block
-): void {
-  let vd = getOrCreateVaultDeployment(vault, timestamp, block)
-
-  // Copy all fields tracked on the Vault entity
-  vd.bufferManager = vault.bufferManager
-  vd.strategyRouter = vault.strategyRouter
-  vd.healthRegistry = vault.healthRegistry
-  vd.feeCollector = vault.feeCollector
-  vd.owner = vault.owner
-  vd.guardian = vault.guardian
-  vd.incentives = vault.incentives
-  vd.paramsProvider = vault.paramsProvider
-  vd.vetoer = vault.vetoer
-  vd.oracle = vault.oracle
-
-  vd.updatedAt = timestamp
-  vd.updatedAtBlock = block.number
-  vd.save()
-}
-
-export function getOrCreateStrategyDeployment(
-  vault: Vault,
-  strategyAddress: Address,
-  routerAddress: Address,
-  name: string,
-  enabled: bool,
-  priority: i32,
-  weightBps: i32,
-  timestamp: BigInt,
-  block: ethereum.Block
-): StrategyDeployment {
-  let id = vault.id + "-" + strategyAddress.toHexString().toLowerCase()
-
-  let sd = StrategyDeployment.load(id)
-  if (sd == null) {
-    sd = new StrategyDeployment(id)
-    sd.vault = vault.id
-    sd.chainId = vault.chainId
-    sd.strategyAddress = strategyAddress
-    sd.strategyRouter = routerAddress
-    sd.name = name
-    sd.enabled = enabled
-    sd.priority = priority
-    sd.weightBps = weightBps
-    sd.totalAssets = null
-    sd.strategyUpkeep = null
-    sd.upkeepKind = null
-
-    // Link to VaultDeployment
-    let vd = VaultDeployment.load(vault.id)
-    if (vd != null) {
-      sd.vaultDeployment = vd.id
-    }
-
-    sd.updatedAt = timestamp
-    sd.updatedAtBlock = block.number
-  }
-
-  return sd
-}
-
-export function getOrCreateVaultUpkeepBinding(
-  upkeepAddress: Address,
-  vault: Vault,
-  timestamp: BigInt,
-  block: ethereum.Block
-): VaultUpkeepBinding {
-  let chainId = vault.chainId
-  let id = upkeepAddress.toHexString().toLowerCase() + "-"
-    + Address.fromBytes(vault.address).toHexString().toLowerCase() + "-"
-    + chainId.toString()
-
-  let binding = VaultUpkeepBinding.load(id)
-  if (binding == null) {
-    binding = new VaultUpkeepBinding(id)
-    binding.upkeep = upkeepAddress
-    binding.vault = vault.id
-    binding.chainId = chainId
-    binding.createdAt = timestamp
-
-    let vd = VaultDeployment.load(vault.id)
-    if (vd != null) {
-      binding.vaultDeployment = vd.id
-    }
-  }
-
-  binding.updatedAt = timestamp
-  binding.updatedAtBlock = block.number
-
-  return binding
-}
-
-export function getOrCreateStrategyUpkeepBinding(
-  upkeepAddress: Address,
-  strategyAddress: Address,
-  chainId: i32,
-  upkeepType: string,
-  timestamp: BigInt,
-  block: ethereum.Block
-): StrategyUpkeepBinding {
-  let id = upkeepAddress.toHexString().toLowerCase() + "-"
-    + strategyAddress.toHexString().toLowerCase() + "-"
-    + chainId.toString()
-
-  let binding = StrategyUpkeepBinding.load(id)
-  if (binding == null) {
-    binding = new StrategyUpkeepBinding(id)
-    binding.upkeep = upkeepAddress
-    binding.strategy = strategyAddress
-    binding.chainId = chainId
-    binding.upkeepType = upkeepType
-    binding.enabled = true
-    binding.vault = null
-    binding.strategyDeployment = null
-    binding.createdAt = timestamp
-  }
-
-  binding.updatedAt = timestamp
-  binding.updatedAtBlock = block.number
-
-  return binding
 }

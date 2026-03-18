@@ -330,8 +330,13 @@ import {
   getOrCreateVault,
   refreshVaultState,
   getOrCreateVaultDayData,
+  snapshotVaultDayData,
   updateVaultDayDataApy,
   updateVaultApyMetrics,
+  getOrCreateProtocolDeployment,
+  getOrCreateVaultDeployment,
+  syncVaultDeploymentFromVault,
+  getOrCreateStrategyDeployment,
   getOrCreateUserPosition,
   updatePositionValues,
   getOrCreateUserPositionDayData,
@@ -462,6 +467,14 @@ function handleVaultCreationInternal(
     )
     tokenPrice.save()
   }
+
+  // Populate ProtocolDeployment with factory address
+  // datasource: VaultFactory → event.address == VaultFactory contract
+  let pd = getOrCreateProtocolDeployment(chainId, block)
+  pd.vaultFactory = factoryAddr
+  pd.updatedAt = block.timestamp
+  pd.updatedAtBlock = block.number
+  pd.save()
 
   // Start indexing this vault's events
   VaultTemplate.create(vaultAddr)
@@ -1200,6 +1213,10 @@ export function handleCrystallized(event: CrystallizedEvent): void {
   crystal.blockNumber = event.block.number
   crystal.txHash = event.transaction.hash
   crystal.save()
+
+  // Crystallization changes PPS — refresh and snapshot APY
+  refreshVaultState(vault, event.block)
+  snapshotVaultDayData(vault, event.block)
 }
 
 export function handlePerfFeeMinted(event: PerfFeeMintedEvent): void {
@@ -1360,6 +1377,10 @@ export function handleReserveTargetRestored(event: ReserveTargetRestoredEvent): 
   restore.blockNumber = event.block.number
   restore.txHash = event.transaction.hash
   restore.save()
+
+  // Reserve restore changes totalAssets — refresh and snapshot APY
+  refreshVaultState(vault, event.block)
+  snapshotVaultDayData(vault, event.block)
 }
 
 export function handleEpochRolled(event: EpochRolledEvent): void {
@@ -1404,7 +1425,8 @@ export function handleVaultPpsSnapshot(event: VaultPpsSnapshotEvent): void {
   vault.totalSupply = event.params.totalSupply
   vault.sharePrice = event.params.pps
   vault.updatedAt = event.block.timestamp
-  vault.save()
+  // APY snapshot — canonical save point
+  snapshotVaultDayData(vault, event.block)
 }
 
 export function handleNavSmoothUpdated(event: NavSmoothUpdatedEvent): void {
@@ -1653,8 +1675,17 @@ export function handleRouterAccepted(event: RouterAcceptedEvent): void {
   timelockEvent.txHash = event.transaction.hash
   timelockEvent.save()
 
-  // Only create template if router address changed
-  if (vault.strategyRouter === null || !vault.strategyRouter!.equals(event.params.newRouter)) {
+  // Only create template if router address changed (AS-safe narrowing)
+  let currentRouter = vault.strategyRouter
+  let routerChanged = false
+  if (currentRouter === null) {
+    routerChanged = true
+  } else {
+    if (!currentRouter.equals(event.params.newRouter)) {
+      routerChanged = true
+    }
+  }
+  if (routerChanged) {
     StrategyRouterTemplate.create(event.params.newRouter)
   }
 
@@ -1760,8 +1791,17 @@ export function handleStrategyRouterUpdated(event: StrategyRouterUpdatedEvent): 
   componentUpdate.txHash = event.transaction.hash
   componentUpdate.save()
 
-  // Only create template if router address changed
-  if (vault.strategyRouter === null || !vault.strategyRouter!.equals(event.params.newRouter)) {
+  // Only create template if router address changed (AS-safe narrowing)
+  let currentRouter2 = vault.strategyRouter
+  let routerChanged2 = false
+  if (currentRouter2 === null) {
+    routerChanged2 = true
+  } else {
+    if (!currentRouter2.equals(event.params.newRouter)) {
+      routerChanged2 = true
+    }
+  }
+  if (routerChanged2) {
     StrategyRouterTemplate.create(event.params.newRouter)
   }
 
@@ -2096,8 +2136,16 @@ export function handleEcosystemConfigured(event: EcosystemConfiguredEvent): void
   let vault = Vault.load(vaultId)
   if (vault == null) return
 
-  // Only create template if router address is new and non-zero
-  let routerChanged = vault.strategyRouter === null || !vault.strategyRouter!.equals(event.params.strategyRouter)
+  // Only create template if router address is new and non-zero (AS-safe narrowing)
+  let currentRouter3 = vault.strategyRouter
+  let routerChanged = false
+  if (currentRouter3 === null) {
+    routerChanged = true
+  } else {
+    if (!currentRouter3.equals(event.params.strategyRouter)) {
+      routerChanged = true
+    }
+  }
 
   vault.bufferManager = event.params.bufferManager
   vault.strategyRouter = event.params.strategyRouter
@@ -2978,6 +3026,14 @@ export function handleDefaultOracleConfigSet(event: DefaultOracleConfigSetEvent)
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // datasource: GlobalConfig → event.address == GlobalConfig contract
+  let chainId2 = getChainIdFromNetwork(dataSource.network())
+  let pd = getOrCreateProtocolDeployment(chainId2, event.block)
+  pd.globalConfig = event.address
+  pd.updatedAt = event.block.timestamp
+  pd.updatedAtBlock = event.block.number
+  pd.save()
 }
 
 export function handleAssetOracleConfigSet(event: AssetOracleConfigSetEvent): void {
@@ -3036,6 +3092,13 @@ export function handleOpsSplitExecuted(event: OpsSplitExecutedEvent): void {
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // datasource: OpsCollector → event.address == OpsCollector contract
+  let pdOps = getOrCreateProtocolDeployment(evt.chainId, event.block)
+  pdOps.opsCollector = event.address
+  pdOps.updatedAt = event.block.timestamp
+  pdOps.updatedAtBlock = event.block.number
+  pdOps.save()
 }
 
 export function handleSplitParamsUpdated(event: SplitParamsUpdatedEvent): void {
@@ -3104,6 +3167,13 @@ export function handleRedeemed(event: RedeemedEvent): void {
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // datasource: FeeDistributor → event.address == FeeDistributor contract
+  let pdFd = getOrCreateProtocolDeployment(evt.chainId, event.block)
+  pdFd.feeDistributor = event.address
+  pdFd.updatedAt = event.block.timestamp
+  pdFd.updatedAtBlock = event.block.number
+  pdFd.save()
 }
 
 export function handleEpochFunded(event: EpochFundedEvt): void {
@@ -3183,6 +3253,13 @@ export function handleRootPublished(event: RootPublishedEvent): void {
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // datasource: EpochPayout → event.address == EpochPayout contract
+  let pdEp = getOrCreateProtocolDeployment(evt.chainId, event.block)
+  pdEp.epochPayout = event.address
+  pdEp.updatedAt = event.block.timestamp
+  pdEp.updatedAtBlock = event.block.number
+  pdEp.save()
 }
 
 export function handleClaimed(event: ClaimedEvent): void {
@@ -3221,6 +3298,13 @@ export function handleReferralBound(event: ReferralBoundEvt): void {
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // datasource: ReferralBinding → event.address == ReferralBinding contract
+  let pdRb = getOrCreateProtocolDeployment(evt.chainId, event.block)
+  pdRb.referralBinding = event.address
+  pdRb.updatedAt = event.block.timestamp
+  pdRb.updatedAtBlock = event.block.number
+  pdRb.save()
 }
 
 export function handleRouterAuthorizationUpdated(event: RouterAuthorizationUpdatedEvent): void {
@@ -3260,6 +3344,13 @@ export function handlePartnerRegistered(event: PartnerRegisteredEvent): void {
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // datasource: PartnerRegistry → event.address == PartnerRegistry contract
+  let pdPr = getOrCreateProtocolDeployment(evt.chainId, event.block)
+  pdPr.partnerRegistry = event.address
+  pdPr.updatedAt = event.block.timestamp
+  pdPr.updatedAtBlock = event.block.number
+  pdPr.save()
 }
 
 export function handlePartnerUpdated(event: PartnerUpdatedEvent): void {
@@ -3321,6 +3412,13 @@ export function handleDepositWithReferral(event: DepositWithReferralEvt): void {
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  // datasource: DepositRouter → event.address == DepositRouter contract
+  let pdDr = getOrCreateProtocolDeployment(evt.chainId, event.block)
+  pdDr.depositRouter = event.address
+  pdDr.updatedAt = event.block.timestamp
+  pdDr.updatedAtBlock = event.block.number
+  pdDr.save()
 }
 
 export function handleReferralBindingSkipped(event: ReferralBindingSkippedEvt): void {

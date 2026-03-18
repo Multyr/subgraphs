@@ -142,11 +142,16 @@ type Vault @entity {
 
   updatedAt: BigInt!
 
+  # Ops deployment wiring
+  deployment: VaultDeployment @derivedFrom(field: "coreVault")
+
   # Derived relations
   dayData: [VaultDayData!]! @derivedFrom(field: "vault")
   positions: [UserVaultPosition!]! @derivedFrom(field: "vault")
   transactions: [Transaction!]! @derivedFrom(field: "vault")
   strategies: [VaultStrategy!]! @derivedFrom(field: "vault")
+  strategyDeployments: [StrategyDeployment!]! @derivedFrom(field: "vault")
+  upkeepBindings: [VaultUpkeepBinding!]! @derivedFrom(field: "vault")
 }
 
 # Vault daily snapshot - historical performance tracking. ID: vaultId-dayId
@@ -1426,4 +1431,111 @@ type PeripheryUpkeepEvent @entity {
   timestamp: BigInt!
   blockNumber: BigInt!
   txHash: Bytes!
+}
+
+# =============================================================================
+# OPS DASHBOARD — Deployment Wiring Entities
+# =============================================================================
+
+# Protocol-level deployment: shared components per chain. ID: "protocol-deploy-{chainId}"
+type ProtocolDeployment @entity {
+  id: ID!
+  chainId: Int!
+
+  # Shared components
+  vaultFactory: Bytes
+  globalConfig: Bytes
+  depositRouter: Bytes
+  referralBinding: Bytes
+  opsCollector: Bytes
+  feeDistributor: Bytes
+  epochPayout: Bytes
+  peripheryUpkeep: Bytes
+  feeCollectorUpkeep: Bytes
+  partnerRegistry: Bytes
+
+  updatedAt: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+# Per-vault deployment wiring. ID: "{vaultAddress}-{chainId}"
+type VaultDeployment @entity {
+  id: ID!
+  chainId: Int!
+
+  coreVault: Vault!
+
+  # Core wiring
+  bufferManager: Bytes
+  queueModule: Bytes
+  adminModule: Bytes
+  strategyRouter: Bytes
+  healthRegistry: Bytes
+  feeCollector: Bytes
+  oracle: Bytes
+  paramsProvider: Bytes
+  incentives: Bytes
+
+  # Governance
+  owner: Bytes
+  guardian: Bytes
+  vetoer: Bytes
+  sealed: Boolean!
+
+  # Automation
+  vaultUpkeep: Bytes
+
+  # Reference
+  protocolDeployment: ProtocolDeployment
+
+  updatedAt: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+# Per-strategy deployment wiring. ID: "{strategyAddress}-{vaultId}"
+type StrategyDeployment @entity {
+  id: ID!
+  chainId: Int!
+
+  vault: Vault!
+  strategyAddress: Bytes!
+  strategyRouter: Bytes
+
+  # Strategy state
+  enabled: Boolean!
+  priority: Int!
+  weightBps: Int!
+  totalAssets: BigInt!
+
+  # Automation
+  strategyUpkeep: Bytes
+  upkeepKind: String   # "lending", "multiply", etc.
+
+  updatedAt: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+# Binding: VaultUpkeep → Vault. ID: "{upkeepAddress}-{vaultId}"
+type VaultUpkeepBinding @entity {
+  id: ID!
+  chainId: Int!
+
+  upkeep: Bytes!
+  vault: Vault!
+
+  updatedAt: BigInt!
+}
+
+# Binding: StrategyUpkeep → Strategy. ID: "{upkeepAddress}-{strategyAddress}"
+type StrategyUpkeepBinding @entity {
+  id: ID!
+  chainId: Int!
+
+  strategyUpkeep: Bytes!
+  strategyAddress: Bytes!
+  upkeepKind: String   # "lending", "multiply"
+
+  vault: Vault
+
+  updatedAt: BigInt!
 }
