@@ -1,0 +1,30 @@
+{
+  "description": "Bootstrap registry for non-recoverable deploy-time wiring. Use ONLY when subgraph VaultDeployment fields are null.",
+  "version": "1.0.0",
+  "updatedAt": "2026-03-18",
+  "chains": {
+    "42161": {
+      "name": "Arbitrum One",
+      "vaults": [
+        {
+          "vault": "0x77d9288e104fa643a2c07e4bd1f3a2f35d62008c",
+          "version": "v4",
+          "queueModule": "0x41815C7774caad6E051d1F23375526F07AF85eBa",
+          "adminModule": "0x17a342233b47f71038a2f05c1220d32ab8d43a03",
+          "erc4626Module": "0x72cB278dFD4DB3882b9aFbB45c0d63D93985683f",
+          "liquidityOpsModule": "0x2cf61ad75eec17529c891d85519737eb1f260d80",
+          "deployBlock": 442800000,
+          "routingFrozen": true
+        }
+      ]
+    },
+    "8453": {
+      "name": "Base",
+      "vaults": []
+    },
+    "1": {
+      "name": "Ethereum",
+      "vaults": []
+    }
+  }
+}
