@@ -44,50 +44,13 @@ dataSources:
           handler: handleVaultStatusChanged
       file: ./src/mappings.ts
 
-  # Legacy VaultFactory v1 — captures VaultDeployed for CoreVault v4
-  # registered here at block ~442800000, before VaultFactory v2 existed.
-  # Without this, the VaultTemplate is created too late and all wiring events are lost.
-  - kind: ethereum/contract
-    name: VaultFactoryV1
-    network: arbitrum-one
-    source:
-      address: "0x0DB1fE52106D6c7FaC4D4DC33ad0097b0Ef70aff"
-      abi: VaultFactory
-      startBlock: 440464138
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.7
-      language: wasm/assemblyscript
-      entities:
-        - Protocol
-        - VaultFactory
-        - Vault
-        - TokenPrice
-      abis:
-        - name: VaultFactory
-          file: ./abis/VaultFactory.json
-        - name: Vault
-          file: ./abis/Vault.json
-        - name: ERC20
-          file: ./abis/ERC20.json
-        - name: ChainlinkAggregator
-          file: ./abis/ChainlinkAggregator.json
-      eventHandlers:
-        - event: VaultDeployed(indexed address,indexed address,indexed address,address,string,string)
-          handler: handleVaultDeployed
-        - event: VaultCreated(indexed address,indexed address,address,address,string,string)
-          handler: handleVaultCreated
-        - event: VaultProductionReady(indexed address)
-          handler: handleVaultProductionReady
-      file: ./src/mappings.ts
-
   - kind: ethereum/contract
     name: VaultUpkeep
     network: arbitrum-one
     source:
-      address: "0xe5c2ba17bf294b70c21498fcc74975c86d380c9d"
+      address: "0xFE02B8FAF9f1752c6C71c9B28d17D16d6a2e54B1"
       abi: VaultUpkeep
-      startBlock: 442564305
+      startBlock: 443412545
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -106,9 +69,9 @@ dataSources:
     name: GlobalConfig
     network: arbitrum-one
     source:
-      address: "0x4A6a4E1D3120Bd016C96cf035d3FAB99D4a0c6Ce"
+      address: "0xf740791cC489EFB3dCA71F3F2465fF37a74D8367"
       abi: GlobalConfig
-      startBlock: 440464138
+      startBlock: 443412545
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -275,9 +238,9 @@ dataSources:
     name: DepositRouter
     network: arbitrum-one
     source:
-      address: "0x6f051953f2f9b1bb4fe1b6ad537877af01a2e369"
+      address: "0x1A544790aD785dc8867a1915525cAE6835960eA2"
       abi: DepositRouter
-      startBlock: 440478600
+      startBlock: 443412545
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -321,9 +284,9 @@ dataSources:
     name: StrategyUpkeep
     network: arbitrum-one
     source:
-      address: "0x9D2c6AF78F57fEAe4322e86E5952Da4e414ada82"
+      address: "0xeEA2D0b3E8B6152f3dBc02E92c1aFbC8a0f85C45"
       abi: StrategyUpkeep
-      startBlock: 442800000
+      startBlock: 443412545
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -352,9 +315,9 @@ dataSources:
     name: FeeCollectorUpkeep
     network: arbitrum-one
     source:
-      address: "0x5D4e0b9AA48234bC2Cb10b0A2f97430A4a9a8EA8"
+      address: "0x502426e13E5616ee8b314b0083c48a18a3834A6c"
       abi: FeeCollectorUpkeep
-      startBlock: 442800000
+      startBlock: 443412545
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
