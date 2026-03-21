@@ -2253,13 +2253,17 @@ export function handleStrategyRegistered(event: StrategyRegisteredEvent): void {
   strategy.updatedAt = event.block.timestamp
   strategy.save()
 
-  // Create StrategyDeployment entity — resolve vault via StrategyRouter.core()
+  // Resolve vault via StrategyRouter.core() — needed for VaultStrategy.vault + StrategyDeployment
   let routerContract = StrategyRouterContract.bind(event.address)
   let coreResult = routerContract.try_core()
   if (!coreResult.reverted) {
     let vaultIdSd = coreResult.value.toHexString().toLowerCase() + "-" + chainId.toString()
     let vaultSd = Vault.load(vaultIdSd)
     if (vaultSd !== null) {
+      // Set VaultStrategy.vault for @derivedFrom resolution (Panel 10 PnL)
+      strategy.vault = vaultIdSd
+      strategy.save()
+
       let sd = getOrCreateStrategyDeployment(vaultSd, event.params.strat, event.block)
       sd.priority = event.params.priority
       sd.weightBps = event.params.weightBps
