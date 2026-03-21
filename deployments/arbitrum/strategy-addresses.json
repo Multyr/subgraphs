@@ -1,0 +1,18 @@
+{
+  "chainId": 42161,
+  "blockNumber": 443412545,
+  "state": "PRE-SEAL",
+  "strategy": "0xd67D62d9042E7DED9E6E4E7C34A46386c00481F8",
+  "lendingStrategy": "0xd67D62d9042E7DED9E6E4E7C34A46386c00481F8",
+  "bootstrapper": "0x81A929fb98dcF3a51C5AEa4Da9dB8124cE330Bc8",
+  "strategyUpkeep": "0xeEA2D0b3E8B6152f3dBc02E92c1aFbC8a0f85C45",
+  "protocolRegistry": "0xe4ACf2a8EA6572D7590B7d1af1Be9da48Dee0115",
+  "aaveLendingAdapter": "0xE0452cf945f4Ac2d4B3B0f23C7987273bA5D5C31",
+  "morphoLendingAdapter": "0x424cf8704E3Bb93caCBaC656af97402A6E9426C6",
+  "cometLendingAdapter": "0x81db22019CcD06876FAAd7877e932d429876B370",
+  "eulerLendingAdapter": "0x07d86817A1032cD3b85656655db872D30a7eE14E",
+  "dolomiteLendingAdapter": "0x029Ed06dB67A0ab5994a9E3427F8C873405621E4",
+  "gainsLendingAdapter": "0x19B5FC75b3292A4b7E4b24F1b2FE8aa094a92458",
+  "aaveRateProvider": "0x4013dAB2C07AB46CD23ecE24a61aD4EeBF69D213",
+  "dolomiteRateProvider": "0x909500b2dFB3B70D4277902EC48bfA6Cb6fDd28e"
+}
