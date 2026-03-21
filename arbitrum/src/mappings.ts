@@ -135,7 +135,7 @@ import {
   EcosystemConfigured as EcosystemConfiguredEvent
 } from "../generated/templates/VaultTemplate/Vault"
 
-// StrategyRouter Events
+// StrategyRouter Events + Contract binding
 import {
   StrategyRegistered as StrategyRegisteredEvent,
   StrategyToggled as StrategyToggledEvent,
@@ -154,15 +154,17 @@ import {
   // Harvest telemetry events (Pendle-style)
   StrategyHarvested as StrategyHarvestedEvent,
   StrategyHarvestFailed as StrategyHarvestFailedEvent,
-  HarvestBatchSummary as HarvestBatchSummaryEvent
+  HarvestBatchSummary as HarvestBatchSummaryEvent,
+  StrategyRouter as StrategyRouterContract
 } from "../generated/templates/StrategyRouterTemplate/StrategyRouter"
 
 // Strategy contract binding (for on-chain metadata reads: name, description)
 import { Strategy as StrategyContract } from "../generated/templates/StrategyRouterTemplate/Strategy"
 
-// VaultUpkeep Events
+// VaultUpkeep Events + Contract binding
 import {
-  UpkeepPerformed as UpkeepPerformedEvent
+  UpkeepPerformed as UpkeepPerformedEvent,
+  VaultUpkeep as VaultUpkeepContract
 } from "../generated/VaultUpkeep/VaultUpkeep"
 
 // StrategyUpkeep Events
@@ -494,6 +496,13 @@ function handleVaultCreationInternal(
   pd.updatedAt = block.timestamp
   pd.updatedAtBlock = block.number
   pd.save()
+
+  // Bootstrap VaultDeployment with data already known from the creation event.
+  // EcosystemConfigured / FeeCollectorSet / VaultRoutingConfigured events fire
+  // in the same tx but are emitted BEFORE VaultTemplate.create() — so the
+  // template is not yet active and those events are lost.  syncVaultDeploymentFromVault
+  // copies whatever the Vault entity already has (feeCollector from the event param).
+  syncVaultDeploymentFromVault(vault, block)
 
   // Start indexing this vault's events
   VaultTemplate.create(vaultAddr)
@@ -2244,6 +2253,24 @@ export function handleStrategyRegistered(event: StrategyRegisteredEvent): void {
   strategy.updatedAt = event.block.timestamp
   strategy.save()
 
+  // Create StrategyDeployment entity — resolve vault via StrategyRouter.core()
+  let routerContract = StrategyRouterContract.bind(event.address)
+  let coreResult = routerContract.try_core()
+  if (!coreResult.reverted) {
+    let vaultIdSd = coreResult.value.toHexString().toLowerCase() + "-" + chainId.toString()
+    let vaultSd = Vault.load(vaultIdSd)
+    if (vaultSd !== null) {
+      let sd = getOrCreateStrategyDeployment(vaultSd, event.params.strat, event.block)
+      sd.priority = event.params.priority
+      sd.weightBps = event.params.weightBps
+      sd.enabled = true
+      sd.strategyRouter = event.address
+      sd.updatedAt = event.block.timestamp
+      sd.updatedAtBlock = event.block.number
+      sd.save()
+    }
+  }
+
   let id = createEventId(event.transaction.hash, event.logIndex)
   let routerEvent = new StrategyRouterEvent(id)
   routerEvent.router = routerId
@@ -3086,19 +3113,22 @@ export function handleUpkeepPerformed(event: UpkeepPerformedEvent): void {
 
   action.save()
 
-  // Update VaultUpkeep binding — VaultUpkeep has immutable core() pointing to vault
-  // We use event.address (the VaultUpkeep contract) to populate the binding
-  let upkeepAddr = event.address
-  let chainIdUp = getChainIdFromNetwork(dataSource.network())
-  // Try to find the vault this upkeep belongs to by checking known vault addresses
-  // For now, use first registered vault (single-vault deployment)
-  let protocolId = "protocol-" + chainIdUp.toString()
-  let protocol = Protocol.load(protocolId)
-  if (protocol !== null) {
-    // Iterate known vaults — but we only have 1 vault per factory for now
-    // The canonical way: VaultUpkeep.core() returns the vault address
-    // Since we can't call on-chain from here easily, we save the upkeep address
-    // and the VaultDeployment will be updated when we know the vault
+  // Populate VaultDeployment.vaultUpkeep via on-chain call to VaultUpkeep.core()
+  let upkeepContract = VaultUpkeepContract.bind(event.address)
+  let coreResult = upkeepContract.try_core()
+  if (!coreResult.reverted) {
+    let chainIdUp = getChainIdFromNetwork(dataSource.network())
+    let vaultIdUp = coreResult.value.toHexString().toLowerCase() + "-" + chainIdUp.toString()
+    let vaultUp = Vault.load(vaultIdUp)
+    if (vaultUp !== null) {
+      let vd = getOrCreateVaultDeployment(vaultUp, event.block)
+      if (vd.vaultUpkeep === null) {
+        vd.vaultUpkeep = event.address
+        vd.updatedAt = event.block.timestamp
+        vd.updatedAtBlock = event.block.number
+        vd.save()
+      }
+    }
   }
 }
 
@@ -3214,10 +3244,21 @@ export function handleSplitParamsUpdated(event: SplitParamsUpdatedEvent): void {
 }
 
 export function handleOpsWalletUpdated(event: OpsWalletUpdatedEvent): void {
+  let chainId = getChainIdFromNetwork(dataSource.network())
+
+  // Populate ProtocolDeployment.opsCollector on first config event
+  let pd = getOrCreateProtocolDeployment(chainId, event.block)
+  if (pd.opsCollector === null) {
+    pd.opsCollector = event.address
+    pd.updatedAt = event.block.timestamp
+    pd.updatedAtBlock = event.block.number
+    pd.save()
+  }
+
   let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
   let evt = new OpsAddressUpdateEvent(id)
 
-  evt.chainId = getChainIdFromNetwork(dataSource.network())
+  evt.chainId = chainId
   evt.updateType = "OPS_WALLET"
   evt.oldAddress = event.params.oldWallet
   evt.newAddress = event.params.newWallet
@@ -3230,10 +3271,20 @@ export function handleOpsWalletUpdated(event: OpsWalletUpdatedEvent): void {
 }
 
 export function handleFeeDistributorUpdated(event: FeeDistributorUpdatedEvent): void {
+  let chainId = getChainIdFromNetwork(dataSource.network())
+
+  // Populate ProtocolDeployment.feeDistributor — event.address is OpsCollector,
+  // event.params.newDistributor is the FeeDistributor address
+  let pd = getOrCreateProtocolDeployment(chainId, event.block)
+  pd.feeDistributor = event.params.newDistributor
+  pd.updatedAt = event.block.timestamp
+  pd.updatedAtBlock = event.block.number
+  pd.save()
+
   let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
   let evt = new OpsAddressUpdateEvent(id)
 
-  evt.chainId = getChainIdFromNetwork(dataSource.network())
+  evt.chainId = chainId
   evt.updateType = "FEE_DISTRIBUTOR"
   evt.oldAddress = event.params.oldDistributor
   evt.newAddress = event.params.newDistributor
@@ -3318,10 +3369,19 @@ export function handleGuardrailsUpdated(event: GuardrailsUpdatedEvent): void {
 }
 
 export function handleEpochPayoutUpdated(event: EpochPayoutUpdatedEvent): void {
+  let chainId = getChainIdFromNetwork(dataSource.network())
+
+  // Populate ProtocolDeployment.epochPayout from FeeDistributor config event
+  let pd = getOrCreateProtocolDeployment(chainId, event.block)
+  pd.epochPayout = event.params.newPayout
+  pd.updatedAt = event.block.timestamp
+  pd.updatedAtBlock = event.block.number
+  pd.save()
+
   let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
   let evt = new FeeDistributorPayoutUpdateEvent(id)
 
-  evt.chainId = getChainIdFromNetwork(dataSource.network())
+  evt.chainId = chainId
   evt.oldPayout = event.params.oldPayout
   evt.newPayout = event.params.newPayout
 
@@ -3405,10 +3465,22 @@ export function handleReferralBound(event: ReferralBoundEvt): void {
 }
 
 export function handleRouterAuthorizationUpdated(event: RouterAuthorizationUpdatedEvent): void {
+  let chainId = getChainIdFromNetwork(dataSource.network())
+
+  // Populate ProtocolDeployment: event.address = ReferralBinding, event.params.router = DepositRouter
+  if (event.params.authorized) {
+    let pd = getOrCreateProtocolDeployment(chainId, event.block)
+    pd.referralBinding = event.address
+    pd.depositRouter = event.params.router
+    pd.updatedAt = event.block.timestamp
+    pd.updatedAtBlock = event.block.number
+    pd.save()
+  }
+
   let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
   let evt = new RouterAuthorizationEvent(id)
 
-  evt.chainId = getChainIdFromNetwork(dataSource.network())
+  evt.chainId = chainId
   evt.router = event.params.router
   evt.authorized = event.params.authorized
 
