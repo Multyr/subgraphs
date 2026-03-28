@@ -1,0 +1,462 @@
+{
+  "version": "1.0",
+  "chainId": "42161",
+  "createdAt": 1774900000000,
+  "meta": {
+    "name": "V9 Activate: ownership + router + KEEPER_ROLE + PARAM_ROLE + unpause",
+    "description": "Post-deploy activation batch. 18 transactions (9 schedule+execute pairs). All via Timelock. Includes: acceptOwner, router.register, KEEPER_ROLE, PARAM_ROLE x4, setMaxStrategyBps+setLossCap, unpauseAll.",
+    "txBuilderVersion": "1.16.5"
+  },
+  "transactions": [
+    {
+      "_step": "1/18 — SCHEDULE: vault.acceptOwnerTransfer()",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" },
+          { "internalType": "uint256", "name": "delay", "type": "uint256" }
+        ],
+        "name": "schedule",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "target": "0x1068D39446B4F49D79933e2F7C812e23c116ea9c",
+        "value": "0",
+        "data": "0x707a7ab3",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000200",
+        "delay": "0"
+      }
+    },
+    {
+      "_step": "2/18 — EXECUTE: vault.acceptOwnerTransfer()",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" }
+        ],
+        "name": "execute",
+        "payable": true
+      },
+      "contractInputsValues": {
+        "target": "0x1068D39446B4F49D79933e2F7C812e23c116ea9c",
+        "value": "0",
+        "data": "0x707a7ab3",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000200"
+      }
+    },
+    {
+      "_step": "3/18 — SCHEDULE: router.register(strategy, 100, 10000)",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" },
+          { "internalType": "uint256", "name": "delay", "type": "uint256" }
+        ],
+        "name": "schedule",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "target": "0xc46B34Ce529651776D72D54DEc7dF5c8629f9162",
+        "value": "0",
+        "data": "0x696c680f00000000000000000000000030f0765be73ace2fa29b6bd6baf190f8c0ba665000000000000000000000000000000000000000000000000000000000000000640000000000000000000000000000000000000000000000000000000000002710",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000201",
+        "delay": "0"
+      }
+    },
+    {
+      "_step": "4/18 — EXECUTE: router.register(strategy, 100, 10000)",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" }
+        ],
+        "name": "execute",
+        "payable": true
+      },
+      "contractInputsValues": {
+        "target": "0xc46B34Ce529651776D72D54DEc7dF5c8629f9162",
+        "value": "0",
+        "data": "0x696c680f00000000000000000000000030f0765be73ace2fa29b6bd6baf190f8c0ba665000000000000000000000000000000000000000000000000000000000000000640000000000000000000000000000000000000000000000000000000000002710",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000201"
+      }
+    },
+    {
+      "_step": "5/18 — SCHEDULE: strategy.grantRole(KEEPER_ROLE, strategyUpkeep)",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" },
+          { "internalType": "uint256", "name": "delay", "type": "uint256" }
+        ],
+        "name": "schedule",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "target": "0x30f0765bE73ace2FA29B6BD6BaF190F8c0ba6650",
+        "value": "0",
+        "data": "0x2f2ff15dfc8737ab85eb45125971625a9ebdb75cc78e01d5c1fa80c4c6e5203f47bc4fab000000000000000000000000d2984a45cd7d2126897c86f3c2e68306168e3c68",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000202",
+        "delay": "0"
+      }
+    },
+    {
+      "_step": "6/18 — EXECUTE: strategy.grantRole(KEEPER_ROLE, strategyUpkeep)",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" }
+        ],
+        "name": "execute",
+        "payable": true
+      },
+      "contractInputsValues": {
+        "target": "0x30f0765bE73ace2FA29B6BD6BaF190F8c0ba6650",
+        "value": "0",
+        "data": "0x2f2ff15dfc8737ab85eb45125971625a9ebdb75cc78e01d5c1fa80c4c6e5203f47bc4fab000000000000000000000000d2984a45cd7d2126897c86f3c2e68306168e3c68",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000202"
+      }
+    },
+    {
+      "_step": "7/18 — SCHEDULE: morpho.grantRole(PARAM_ROLE, strategyUpkeep)",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" },
+          { "internalType": "uint256", "name": "delay", "type": "uint256" }
+        ],
+        "name": "schedule",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "target": "0xd4a6265e5aFe701E7bca48B5f36dDAcdaef918e8",
+        "value": "0",
+        "data": "0x2f2ff15d8a4778feaa2fc65ebc9ddd026461f05b6522e206b955ca87f94c0eebfa8bcb2c000000000000000000000000d2984a45cd7d2126897c86f3c2e68306168e3c68",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000203",
+        "delay": "0"
+      }
+    },
+    {
+      "_step": "8/18 — EXECUTE: morpho.grantRole(PARAM_ROLE, strategyUpkeep)",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" }
+        ],
+        "name": "execute",
+        "payable": true
+      },
+      "contractInputsValues": {
+        "target": "0xd4a6265e5aFe701E7bca48B5f36dDAcdaef918e8",
+        "value": "0",
+        "data": "0x2f2ff15d8a4778feaa2fc65ebc9ddd026461f05b6522e206b955ca87f94c0eebfa8bcb2c000000000000000000000000d2984a45cd7d2126897c86f3c2e68306168e3c68",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000203"
+      }
+    },
+    {
+      "_step": "9/18 — SCHEDULE: dolomite.grantRole(PARAM_ROLE, strategyUpkeep)",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" },
+          { "internalType": "uint256", "name": "delay", "type": "uint256" }
+        ],
+        "name": "schedule",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "target": "0xf29B63BfB6dE3c85eBC5afe5C8E820ca092D0c89",
+        "value": "0",
+        "data": "0x2f2ff15d8a4778feaa2fc65ebc9ddd026461f05b6522e206b955ca87f94c0eebfa8bcb2c000000000000000000000000d2984a45cd7d2126897c86f3c2e68306168e3c68",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000204",
+        "delay": "0"
+      }
+    },
+    {
+      "_step": "10/18 — EXECUTE: dolomite.grantRole(PARAM_ROLE, strategyUpkeep)",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" }
+        ],
+        "name": "execute",
+        "payable": true
+      },
+      "contractInputsValues": {
+        "target": "0xf29B63BfB6dE3c85eBC5afe5C8E820ca092D0c89",
+        "value": "0",
+        "data": "0x2f2ff15d8a4778feaa2fc65ebc9ddd026461f05b6522e206b955ca87f94c0eebfa8bcb2c000000000000000000000000d2984a45cd7d2126897c86f3c2e68306168e3c68",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000204"
+      }
+    },
+    {
+      "_step": "11/18 — SCHEDULE: fluid.grantRole(PARAM_ROLE, strategyUpkeep)",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" },
+          { "internalType": "uint256", "name": "delay", "type": "uint256" }
+        ],
+        "name": "schedule",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "target": "0xf56Fc469e79a7F42b5291065Fd8081C9C857AB76",
+        "value": "0",
+        "data": "0x2f2ff15d8a4778feaa2fc65ebc9ddd026461f05b6522e206b955ca87f94c0eebfa8bcb2c000000000000000000000000d2984a45cd7d2126897c86f3c2e68306168e3c68",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000205",
+        "delay": "0"
+      }
+    },
+    {
+      "_step": "12/18 — EXECUTE: fluid.grantRole(PARAM_ROLE, strategyUpkeep)",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" }
+        ],
+        "name": "execute",
+        "payable": true
+      },
+      "contractInputsValues": {
+        "target": "0xf56Fc469e79a7F42b5291065Fd8081C9C857AB76",
+        "value": "0",
+        "data": "0x2f2ff15d8a4778feaa2fc65ebc9ddd026461f05b6522e206b955ca87f94c0eebfa8bcb2c000000000000000000000000d2984a45cd7d2126897c86f3c2e68306168e3c68",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000205"
+      }
+    },
+    {
+      "_step": "13/18 — SCHEDULE: aaveRP.grantRole(PARAM_ROLE, strategyUpkeep)",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" },
+          { "internalType": "uint256", "name": "delay", "type": "uint256" }
+        ],
+        "name": "schedule",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "target": "0x1C5e28A4D8C909dC38129db139Dc03753a64e0f5",
+        "value": "0",
+        "data": "0x2f2ff15d8a4778feaa2fc65ebc9ddd026461f05b6522e206b955ca87f94c0eebfa8bcb2c000000000000000000000000d2984a45cd7d2126897c86f3c2e68306168e3c68",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000206",
+        "delay": "0"
+      }
+    },
+    {
+      "_step": "14/18 — EXECUTE: aaveRP.grantRole(PARAM_ROLE, strategyUpkeep)",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" }
+        ],
+        "name": "execute",
+        "payable": true
+      },
+      "contractInputsValues": {
+        "target": "0x1C5e28A4D8C909dC38129db139Dc03753a64e0f5",
+        "value": "0",
+        "data": "0x2f2ff15d8a4778feaa2fc65ebc9ddd026461f05b6522e206b955ca87f94c0eebfa8bcb2c000000000000000000000000d2984a45cd7d2126897c86f3c2e68306168e3c68",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000206"
+      }
+    },
+    {
+      "_step": "15/18 — SCHEDULE BATCH: router.setMaxStrategyBps + setLossCapPerStrategy",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address[]", "name": "targets", "type": "address[]" },
+          { "internalType": "uint256[]", "name": "values", "type": "uint256[]" },
+          { "internalType": "bytes[]", "name": "payloads", "type": "bytes[]" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" },
+          { "internalType": "uint256", "name": "delay", "type": "uint256" }
+        ],
+        "name": "scheduleBatch",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "targets": "[\"0xc46B34Ce529651776D72D54DEc7dF5c8629f9162\", \"0xc46B34Ce529651776D72D54DEc7dF5c8629f9162\"]",
+        "values": "[\"0\", \"0\"]",
+        "payloads": "[\"0x9d822f9100000000000000000000000030f0765be73ace2fa29b6bd6baf190f8c0ba66500000000000000000000000000000000000000000000000000000000000002710\", \"0x2ef4daf100000000000000000000000030f0765be73ace2fa29b6bd6baf190f8c0ba66500000000000000000000000000000000000000000000000000000000000000032\"]",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000207",
+        "delay": "0"
+      }
+    },
+    {
+      "_step": "16/18 — EXECUTE BATCH: router.setMaxStrategyBps + setLossCapPerStrategy",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address[]", "name": "targets", "type": "address[]" },
+          { "internalType": "uint256[]", "name": "values", "type": "uint256[]" },
+          { "internalType": "bytes[]", "name": "payloads", "type": "bytes[]" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" }
+        ],
+        "name": "executeBatch",
+        "payable": true
+      },
+      "contractInputsValues": {
+        "targets": "[\"0xc46B34Ce529651776D72D54DEc7dF5c8629f9162\", \"0xc46B34Ce529651776D72D54DEc7dF5c8629f9162\"]",
+        "values": "[\"0\", \"0\"]",
+        "payloads": "[\"0x9d822f9100000000000000000000000030f0765be73ace2fa29b6bd6baf190f8c0ba66500000000000000000000000000000000000000000000000000000000000002710\", \"0x2ef4daf100000000000000000000000030f0765be73ace2fa29b6bd6baf190f8c0ba66500000000000000000000000000000000000000000000000000000000000000032\"]",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000207"
+      }
+    },
+    {
+      "_step": "17/18 — SCHEDULE: vault.unpauseAll()",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" },
+          { "internalType": "uint256", "name": "delay", "type": "uint256" }
+        ],
+        "name": "schedule",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "target": "0x1068D39446B4F49D79933e2F7C812e23c116ea9c",
+        "value": "0",
+        "data": "0x8a2ddd03",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000208",
+        "delay": "0"
+      }
+    },
+    {
+      "_step": "18/18 — EXECUTE: vault.unpauseAll()",
+      "to": "0x295CFB45012b5f40814C4b74b50F871D3f072798",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "target", "type": "address" },
+          { "internalType": "uint256", "name": "value", "type": "uint256" },
+          { "internalType": "bytes", "name": "data", "type": "bytes" },
+          { "internalType": "bytes32", "name": "predecessor", "type": "bytes32" },
+          { "internalType": "bytes32", "name": "salt", "type": "bytes32" }
+        ],
+        "name": "execute",
+        "payable": true
+      },
+      "contractInputsValues": {
+        "target": "0x1068D39446B4F49D79933e2F7C812e23c116ea9c",
+        "value": "0",
+        "data": "0x8a2ddd03",
+        "predecessor": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000208"
+      }
+    }
+  ]
+}

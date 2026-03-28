@@ -9,9 +9,9 @@ dataSources:
     name: VaultFactory
     network: arbitrum-one
     source:
-      address: "0x4201311F1333843fb92a30c687B9C3824E53CA1d"
+      address: "0x046aCF27Fa5A3Df049D4E3868af68D1D0CFAa733"
       abi: VaultFactory
-      startBlock: 443070412
+      startBlock: 446479922
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -48,9 +48,9 @@ dataSources:
     name: VaultUpkeep
     network: arbitrum-one
     source:
-      address: "0x7DEA13f73dcC7384820Da6537C8119215599F32F"
+      address: "0x35c4F18511200186e2827dCca50FbF62Ded446fB"
       abi: VaultUpkeep
-      startBlock: 445170966
+      startBlock: 446479922
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -69,9 +69,9 @@ dataSources:
     name: GlobalConfig
     network: arbitrum-one
     source:
-      address: "0x3F05Ec722A6b31D77a26E25016Bd0e05E152298c"
+      address: "0xD5a607d6c043f2e901268bB868266A5dDbA01Dd9"
       abi: GlobalConfig
-      startBlock: 445170966
+      startBlock: 446479922
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -105,7 +105,7 @@ dataSources:
     source:
       address: "0x78Db3575A3477adfEd19F74142b7ed1a592f80D1"
       abi: OpsCollector
-      startBlock: 440478600
+      startBlock: 446479922
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -134,7 +134,7 @@ dataSources:
     source:
       address: "0x855018a8BCe730ed528b426E78e9A5b28fAb457E"
       abi: FeeDistributor
-      startBlock: 440478600
+      startBlock: 446479922
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -167,7 +167,7 @@ dataSources:
     source:
       address: "0x15F5619256db081c1694f6966e25d1B234D2D897"
       abi: EpochPayout
-      startBlock: 440478600
+      startBlock: 446479922
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -189,9 +189,9 @@ dataSources:
     name: ReferralBinding
     network: arbitrum-one
     source:
-      address: "0x864281D1A7b0E7d0071ea6AEC43b0fE0D7106b1b"
+      address: "0xBCD9CD0E11fe5B6740403C7ce37Af22FB9E77A6E"
       abi: ReferralBinding
-      startBlock: 440478600
+      startBlock: 446479922
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -213,9 +213,9 @@ dataSources:
     name: PartnerRegistry
     network: arbitrum-one
     source:
-      address: "0xe66f441835c9Fa8833E5Fd0a67eB42Ef0a83a9e7"
+      address: "0x3112a409159E4a72adFC7197daB24B38c0Cac2ac"
       abi: PartnerRegistry
-      startBlock: 440478600
+      startBlock: 446479922
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -238,9 +238,9 @@ dataSources:
     name: DepositRouter
     network: arbitrum-one
     source:
-      address: "0x19eD030D14D5044b2BCa61DAb3000d1f852fFce7"
+      address: "0x592C234d516463215e8Cf01C16162aaa8496b941"
       abi: DepositRouter
-      startBlock: 445170966
+      startBlock: 446479922
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -284,9 +284,9 @@ dataSources:
     name: StrategyUpkeep
     network: arbitrum-one
     source:
-      address: "0x898d15F28f2AE3AEAa7D67174570CDF3aC241e25"
+      address: "0xD2984A45CD7d2126897c86F3c2E68306168E3c68"
       abi: StrategyUpkeep
-      startBlock: 445170966
+      startBlock: 446479922
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -315,9 +315,9 @@ dataSources:
     name: FeeCollectorUpkeep
     network: arbitrum-one
     source:
-      address: "0xEDa62DfeFCC2C5F457C8CB50ceA96570b6C99D37"
+      address: "0x924C814a5Befc4B0171365877d5c0a1faAa8409b"
       abi: FeeCollectorUpkeep
-      startBlock: 445170966
+      startBlock: 446479922
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
