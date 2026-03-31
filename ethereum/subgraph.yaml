@@ -694,6 +694,36 @@ templates:
       file: ./src/mappings.ts
 
   # =========================================================================
+  # Strategy Template - dynamically created when strategy is registered
+  # =========================================================================
+  - kind: ethereum/contract
+    name: StrategyTemplate
+    network: mainnet
+    source:
+      abi: Strategy
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - AdapterBinding
+      abis:
+        - name: Strategy
+          file: ./abis/Strategy.json
+      eventHandlers:
+        - event: AdapterAdded(indexed address)
+          handler: handleAdapterAdded
+        - event: AdapterToggled(indexed address,bool)
+          handler: handleAdapterToggled
+        - event: AdapterActivated(indexed address,uint64)
+          handler: handleAdapterActivated
+        - event: AdapterAutoQuarantined(indexed address,uint8)
+          handler: handleAdapterAutoQuarantined
+        - event: AdapterFlagged(indexed address,bool)
+          handler: handleAdapterFlagged
+      file: ./src/mappings.ts
+
+  # =========================================================================
   # StrategyRouter Template - dynamically created when router is set
   # =========================================================================
   - kind: ethereum/contract

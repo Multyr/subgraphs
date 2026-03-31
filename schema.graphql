@@ -1516,6 +1516,25 @@ type StrategyDeployment @entity {
   updatedAtBlock: BigInt!
 }
 
+# Adapter binding within a strategy. ID: "{strategyAddress}-{adapterAddress}"
+type AdapterBinding @entity {
+  id: ID!
+  chainId: Int!
+
+  strategy: StrategyDeployment!
+  vault: Vault!
+  adapter: Bytes!
+
+  enabled: Boolean!
+  flagged: Boolean!
+  activatedAt: BigInt
+  consecutiveFailures: Int!
+  quarantined: Boolean!
+
+  createdAtBlock: BigInt!
+  updatedAtBlock: BigInt!
+}
+
 # Binding: VaultUpkeep → Vault. ID: "{upkeepAddress}-{vaultId}"
 type VaultUpkeepBinding @entity {
   id: ID!

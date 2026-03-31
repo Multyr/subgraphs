@@ -161,6 +161,16 @@ import {
 // Strategy contract binding (for on-chain metadata reads: name, description)
 import { Strategy as StrategyContract } from "../generated/templates/StrategyRouterTemplate/Strategy"
 
+// Strategy Template Events (adapter lifecycle)
+import {
+  AdapterAdded as AdapterAddedEvent,
+  AdapterToggled as AdapterToggledEvent,
+  AdapterActivated as AdapterActivatedEvent,
+  AdapterAutoQuarantined as AdapterAutoQuarantinedEvent,
+  AdapterFlagged as AdapterFlaggedEvent,
+  Strategy as StrategyTemplateContract
+} from "../generated/templates/StrategyTemplate/Strategy"
+
 // VaultUpkeep Events + Contract binding
 import {
   UpkeepPerformed as UpkeepPerformedEvent,
@@ -314,6 +324,8 @@ import {
   DepositWithReferralEvent,
   ReferralBindingSkippedEvent,
   PeripheryUpkeepEvent,
+  // Adapter binding entity
+  AdapterBinding,
   // Ops dashboard entities
   StrategyUpkeepBinding,
   VaultUpkeepBinding,
@@ -321,7 +333,7 @@ import {
 } from "../generated/schema"
 
 // Template for dynamic vault indexing
-import { VaultTemplate, StrategyRouterTemplate } from "../generated/templates"
+import { VaultTemplate, StrategyRouterTemplate, StrategyTemplate } from "../generated/templates"
 
 // Local helpers
 import {
@@ -2272,6 +2284,44 @@ export function handleStrategyRegistered(event: StrategyRegisteredEvent): void {
       sd.updatedAt = event.block.timestamp
       sd.updatedAtBlock = event.block.number
       sd.save()
+
+      // Create StrategyTemplate to index adapter events going forward
+      StrategyTemplate.create(event.params.strat)
+
+      // Backfill: read existing adapter state from on-chain (adapters wired before registration)
+      let strat = StrategyTemplateContract.bind(event.params.strat)
+      let countResult = strat.try_adapterCount()
+      if (!countResult.reverted) {
+        let count = countResult.value.toI32()
+        for (let i = 0; i < count; i++) {
+          let adapterResult = strat.try_adapters(BigInt.fromI32(i))
+          if (!adapterResult.reverted) {
+            let adapterAddr = adapterResult.value
+            let bindingId = event.params.strat.toHexString().toLowerCase() + "-" + adapterAddr.toHexString().toLowerCase()
+            let binding = AdapterBinding.load(bindingId)
+            if (binding == null) {
+              binding = new AdapterBinding(bindingId)
+              binding.chainId = chainId
+              binding.strategy = sd.id
+              binding.vault = vaultSd.id
+              binding.adapter = adapterAddr
+              binding.consecutiveFailures = 0
+              binding.quarantined = false
+              binding.createdAtBlock = event.block.number
+
+              let enabledResult = strat.try_enabled(adapterAddr)
+              binding.enabled = enabledResult.reverted ? true : enabledResult.value
+
+              let flaggedResult = strat.try_flagged(adapterAddr)
+              binding.flagged = flaggedResult.reverted ? false : flaggedResult.value
+
+              binding.activatedAt = null
+              binding.updatedAtBlock = event.block.number
+              binding.save()
+            }
+          }
+        }
+      }
     }
   }
 
@@ -3748,4 +3798,82 @@ export function handleFeeDistributionFailed(event: DistributionFailedEvent): voi
   action.blockNumber = event.block.number
   action.txHash = event.transaction.hash
   action.save()
+}
+
+// =============================================================================
+// STRATEGY ADAPTER EVENT HANDLERS
+// =============================================================================
+
+function getOrCreateAdapterBinding(
+  strategyAddress: Address, adapterAddress: Address, chainId: i32, block: ethereum.Block
+): AdapterBinding {
+  let id = strategyAddress.toHexString().toLowerCase() + "-" + adapterAddress.toHexString().toLowerCase()
+  let binding = AdapterBinding.load(id)
+  if (binding == null) {
+    binding = new AdapterBinding(id)
+    binding.chainId = chainId
+    binding.adapter = adapterAddress
+
+    // Resolve strategy deployment + vault
+    let sdId = strategyAddress.toHexString().toLowerCase()
+    // Strategy deployment ID is "{strategyAddress}-{vaultId}" — we need to find it
+    // Use the StrategyRouter.core() pattern: read core from strategy contract
+    let strat = StrategyTemplateContract.bind(strategyAddress)
+    let coreResult = strat.try_core()
+    if (!coreResult.reverted) {
+      let vaultId = coreResult.value.toHexString().toLowerCase() + "-" + chainId.toString()
+      binding.vault = vaultId
+      binding.strategy = strategyAddress.toHexString().toLowerCase() + "-" + vaultId
+    }
+
+    binding.enabled = true
+    binding.flagged = false
+    binding.activatedAt = null
+    binding.consecutiveFailures = 0
+    binding.quarantined = false
+    binding.createdAtBlock = block.number
+    binding.updatedAtBlock = block.number
+  }
+  return binding as AdapterBinding
+}
+
+export function handleAdapterAdded(event: AdapterAddedEvent): void {
+  let chainId = getChainIdFromNetwork(dataSource.network())
+  let binding = getOrCreateAdapterBinding(event.address, event.params.adapter, chainId, event.block)
+  binding.enabled = true
+  binding.updatedAtBlock = event.block.number
+  binding.save()
+}
+
+export function handleAdapterToggled(event: AdapterToggledEvent): void {
+  let chainId = getChainIdFromNetwork(dataSource.network())
+  let binding = getOrCreateAdapterBinding(event.address, event.params.adapter, chainId, event.block)
+  binding.enabled = event.params.enabled
+  binding.updatedAtBlock = event.block.number
+  binding.save()
+}
+
+export function handleAdapterActivated(event: AdapterActivatedEvent): void {
+  let chainId = getChainIdFromNetwork(dataSource.network())
+  let binding = getOrCreateAdapterBinding(event.address, event.params.adapter, chainId, event.block)
+  binding.activatedAt = event.params.activatedAt
+  binding.updatedAtBlock = event.block.number
+  binding.save()
+}
+
+export function handleAdapterAutoQuarantined(event: AdapterAutoQuarantinedEvent): void {
+  let chainId = getChainIdFromNetwork(dataSource.network())
+  let binding = getOrCreateAdapterBinding(event.address, event.params.adapter, chainId, event.block)
+  binding.consecutiveFailures = event.params.consecutiveFailures
+  binding.quarantined = true
+  binding.updatedAtBlock = event.block.number
+  binding.save()
+}
+
+export function handleAdapterFlagged(event: AdapterFlaggedEvent): void {
+  let chainId = getChainIdFromNetwork(dataSource.network())
+  let binding = getOrCreateAdapterBinding(event.address, event.params.adapter, chainId, event.block)
+  binding.flagged = event.params.flagged
+  binding.updatedAtBlock = event.block.number
+  binding.save()
 }
