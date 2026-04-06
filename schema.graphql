@@ -1559,3 +1559,62 @@ type StrategyUpkeepBinding @entity {
 
   updatedAt: BigInt!
 }
+
+# =============================================================================
+# INCENTIVES ENGINE v2 (Tranche-Based)
+# =============================================================================
+
+enum RewardMode {
+  VAULT_SHARES
+  MULTYR_TOKEN
+  USDC
+}
+
+# Per-deposit tranche
+type DepositTranche @entity {
+  id: ID!                    # {engine}-{user}-{trancheIdx}
+  engine: Bytes!
+  user: Bytes!
+  trancheIdx: BigInt!
+  principalWad: BigInt!
+  depositTs: BigInt!
+  lastAccrualTs: BigInt!
+  paramsId: Int!
+  active: Boolean!
+  createdAt: BigInt!
+  updatedAt: BigInt!
+}
+
+# Reward vesting tranche
+type RewardVestingTranche @entity {
+  id: ID!                    # {engine}-{user}-{vestingIdx}
+  engine: Bytes!
+  user: Bytes!
+  vestingIdx: BigInt!
+  rewardUnits: BigInt!
+  vestStart: BigInt!
+  vestDurationDays: Int!
+  withdrawnUnits: BigInt!
+  paramsId: Int!
+  mode: RewardMode!
+  conversionRatio: BigInt!
+  active: Boolean!
+  createdAt: BigInt!
+  updatedAt: BigInt!
+}
+
+# Incentive parameter set
+type IncentiveParamsSet @entity {
+  id: ID!                    # {engine}-{paramsId}
+  engine: Bytes!
+  paramsId: Int!
+  cliffDays: Int!
+  fullDays: Int!
+  vestingDays: Int!
+  bmaxWad: BigInt!
+  rewardMode: RewardMode!
+  active: Boolean!
+  effectiveFrom: BigInt!
+  blockTimestamp: BigInt!
+  txHash: Bytes!
+}

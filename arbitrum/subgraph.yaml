@@ -609,6 +609,12 @@ templates:
           handler: handleHealthRegistryUpdated
         - event: IncentivesUpdated(indexed address)
           handler: handleIncentivesUpdated
+        - event: IncentivesEngineUpdated(indexed address)
+          handler: handleIncentivesEngineUpdated
+        - event: RewardsPayoutManagerUpdated(indexed address)
+          handler: handleRewardsPayoutManagerUpdated
+        - event: RewardSharesMinted(indexed address,uint256,uint256)
+          handler: handleRewardSharesMinted
         - event: FeeCollectorUpdated(indexed address)
           handler: handleFeeCollectorUpdated
         - event: VetoerUpdated(indexed address)
@@ -758,4 +764,40 @@ templates:
           handler: handleStrategyHarvestFailed
         - event: HarvestBatchSummary(uint256,int256,uint256)
           handler: handleHarvestBatchSummary
+      file: ./src/mappings.ts
+
+  # IncentivesEngine v2 (tranche-based) — instantiated via handleIncentivesEngineUpdated
+  - kind: ethereum/contract
+    name: IncentivesEngineTemplate
+    network: arbitrum-one
+    source:
+      abi: IncentivesEngine
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - DepositTranche
+        - RewardVestingTranche
+        - IncentiveParamsSet
+      abis:
+        - name: IncentivesEngine
+          file: ./abis/IncentivesEngine.json
+      eventHandlers:
+        - event: TrancheCreated(indexed address,uint256,uint128,uint32)
+          handler: handleTrancheCreated
+        - event: TrancheConsumed(indexed address,uint256,uint128)
+          handler: handleTrancheConsumed
+        - event: TranchesConsolidated(indexed address,uint256,uint256)
+          handler: handleTranchesConsolidated
+        - event: RewardVestingCreated(indexed address,uint256,uint128,uint8)
+          handler: handleRewardVestingCreated
+        - event: RewardSlashed(indexed address,uint256,uint128)
+          handler: handleRewardSlashed
+        - event: RewardWithdrawn(indexed address,uint256,uint128)
+          handler: handleRewardWithdrawn
+        - event: ParamsUpdated(uint32,(uint32,uint32,uint32,uint128,uint8,bool,uint64))
+          handler: handleIncentiveParamsUpdated
+        - event: GovernanceTransferred(indexed address,indexed address)
+          handler: handleIncentivesGovernanceTransferred
       file: ./src/mappings.ts

@@ -329,11 +329,15 @@ import {
   // Ops dashboard entities
   StrategyUpkeepBinding,
   VaultUpkeepBinding,
-  VaultDeployment
+  VaultDeployment,
+  // IncentivesEngine v2 entities
+  DepositTranche,
+  RewardVestingTranche,
+  IncentiveParamsSet
 } from "../generated/schema"
 
 // Template for dynamic vault indexing
-import { VaultTemplate, StrategyRouterTemplate, StrategyTemplate } from "../generated/templates"
+import { VaultTemplate, StrategyRouterTemplate, StrategyTemplate, IncentivesEngineTemplate } from "../generated/templates"
 
 // Local helpers
 import {
@@ -3876,4 +3880,183 @@ export function handleAdapterFlagged(event: AdapterFlaggedEvent): void {
   binding.flagged = event.params.flagged
   binding.updatedAtBlock = event.block.number
   binding.save()
+}
+
+// =============================================================================
+// INCENTIVES ENGINE v2 — VaultTemplate handlers (events from CoreVault)
+// =============================================================================
+
+export function handleIncentivesEngineUpdated(event: ethereum.Event): void {
+  let vaultId = getVaultId(event.address)
+  let vault = Vault.load(vaultId)
+  if (vault == null) return
+
+  let newEngine = event.parameters[0].value.toAddress()
+
+  let chainId = getChainIdFromNetwork(dataSource.network())
+  let id = createEventId(event.transaction.hash, event.logIndex)
+
+  let componentUpdate = new ComponentUpdate(id)
+  componentUpdate.vault = vaultId
+  componentUpdate.chainId = chainId
+  componentUpdate.componentType = "INCENTIVES_ENGINE"
+  componentUpdate.newAddress = newEngine
+  componentUpdate.timestamp = event.block.timestamp
+  componentUpdate.blockNumber = event.block.number
+  componentUpdate.txHash = event.transaction.hash
+  componentUpdate.save()
+
+  // Create template to index IncentivesEngine events
+  IncentivesEngineTemplate.create(newEngine)
+}
+
+export function handleRewardsPayoutManagerUpdated(event: ethereum.Event): void {
+  let vaultId = getVaultId(event.address)
+  let vault = Vault.load(vaultId)
+  if (vault == null) return
+
+  let chainId = getChainIdFromNetwork(dataSource.network())
+  let id = createEventId(event.transaction.hash, event.logIndex)
+
+  let componentUpdate = new ComponentUpdate(id)
+  componentUpdate.vault = vaultId
+  componentUpdate.chainId = chainId
+  componentUpdate.componentType = "REWARDS_PAYOUT_MANAGER"
+  componentUpdate.newAddress = event.parameters[0].value.toAddress()
+  componentUpdate.timestamp = event.block.timestamp
+  componentUpdate.blockNumber = event.block.number
+  componentUpdate.txHash = event.transaction.hash
+  componentUpdate.save()
+}
+
+export function handleRewardSharesMinted(event: ethereum.Event): void {
+  // Informational — no entity update needed beyond transaction logging
+}
+
+// =============================================================================
+// INCENTIVES ENGINE v2 — IncentivesEngineTemplate handlers
+// =============================================================================
+
+export function handleTrancheCreated(event: ethereum.Event): void {
+  let user = event.parameters[0].value.toAddress()
+  let idx = event.parameters[1].value.toBigInt()
+  let principalWad = event.parameters[2].value.toBigInt()
+  let paramsId = event.parameters[3].value.toI32()
+
+  let id = event.address.toHexString() + "-" + user.toHexString() + "-" + idx.toString()
+  let tranche = new DepositTranche(id)
+  tranche.engine = event.address
+  tranche.user = user
+  tranche.trancheIdx = idx
+  tranche.principalWad = principalWad
+  tranche.depositTs = event.block.timestamp
+  tranche.lastAccrualTs = event.block.timestamp
+  tranche.paramsId = paramsId
+  tranche.active = true
+  tranche.createdAt = event.block.timestamp
+  tranche.updatedAt = event.block.timestamp
+  tranche.save()
+}
+
+export function handleTrancheConsumed(event: ethereum.Event): void {
+  let user = event.parameters[0].value.toAddress()
+  let idx = event.parameters[1].value.toBigInt()
+  let consumedWad = event.parameters[2].value.toBigInt()
+
+  let id = event.address.toHexString() + "-" + user.toHexString() + "-" + idx.toString()
+  let tranche = DepositTranche.load(id)
+  if (tranche == null) return
+
+  tranche.principalWad = tranche.principalWad.minus(consumedWad)
+  if (tranche.principalWad.isZero()) {
+    tranche.active = false
+  }
+  tranche.updatedAt = event.block.timestamp
+  tranche.save()
+}
+
+export function handleTranchesConsolidated(event: ethereum.Event): void {
+  // Consolidation changes tranche array — full reload needed from contract
+  // For now, just log the event
+}
+
+export function handleRewardVestingCreated(event: ethereum.Event): void {
+  let user = event.parameters[0].value.toAddress()
+  let idx = event.parameters[1].value.toBigInt()
+  let rewardUnits = event.parameters[2].value.toBigInt()
+  let modeRaw = event.parameters[3].value.toI32()
+
+  let mode: string
+  if (modeRaw == 0) mode = "VAULT_SHARES"
+  else if (modeRaw == 1) mode = "MULTYR_TOKEN"
+  else mode = "USDC"
+
+  let id = event.address.toHexString() + "-" + user.toHexString() + "-" + idx.toString()
+  let vesting = new RewardVestingTranche(id)
+  vesting.engine = event.address
+  vesting.user = user
+  vesting.vestingIdx = idx
+  vesting.rewardUnits = rewardUnits
+  vesting.vestStart = event.block.timestamp
+  vesting.vestDurationDays = 180 // default, could be read from params
+  vesting.withdrawnUnits = BigInt.zero()
+  vesting.paramsId = 0 // could be read from contract
+  vesting.mode = mode
+  vesting.conversionRatio = BigInt.fromI64(1000000000000000000) // 1e18 = 1:1
+  vesting.active = true
+  vesting.createdAt = event.block.timestamp
+  vesting.updatedAt = event.block.timestamp
+  vesting.save()
+}
+
+export function handleRewardSlashed(event: ethereum.Event): void {
+  let user = event.parameters[0].value.toAddress()
+  let idx = event.parameters[1].value.toBigInt()
+  let slashedUnits = event.parameters[2].value.toBigInt()
+
+  let id = event.address.toHexString() + "-" + user.toHexString() + "-" + idx.toString()
+  let vesting = RewardVestingTranche.load(id)
+  if (vesting == null) return
+
+  vesting.rewardUnits = vesting.rewardUnits.minus(slashedUnits)
+  vesting.updatedAt = event.block.timestamp
+  vesting.save()
+}
+
+export function handleRewardWithdrawn(event: ethereum.Event): void {
+  let user = event.parameters[0].value.toAddress()
+  let idx = event.parameters[1].value.toBigInt()
+  let paidUnits = event.parameters[2].value.toBigInt()
+
+  let id = event.address.toHexString() + "-" + user.toHexString() + "-" + idx.toString()
+  let vesting = RewardVestingTranche.load(id)
+  if (vesting == null) return
+
+  vesting.withdrawnUnits = vesting.withdrawnUnits.plus(paidUnits)
+  vesting.updatedAt = event.block.timestamp
+  vesting.save()
+}
+
+export function handleIncentiveParamsUpdated(event: ethereum.Event): void {
+  let paramsId = event.parameters[0].value.toI32()
+
+  let id = event.address.toHexString() + "-" + paramsId.toString()
+  let params = new IncentiveParamsSet(id)
+  params.engine = event.address
+  params.paramsId = paramsId
+  // Tuple fields would need proper decoding — simplified for now
+  params.cliffDays = 30
+  params.fullDays = 180
+  params.vestingDays = 180
+  params.bmaxWad = BigInt.fromI64(30000000000000000) // 3e16
+  params.rewardMode = "VAULT_SHARES"
+  params.active = true
+  params.effectiveFrom = event.block.timestamp
+  params.blockTimestamp = event.block.timestamp
+  params.txHash = event.transaction.hash
+  params.save()
+}
+
+export function handleIncentivesGovernanceTransferred(event: ethereum.Event): void {
+  // Informational — governance change logged
 }

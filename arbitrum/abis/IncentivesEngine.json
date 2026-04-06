@@ -1,0 +1,887 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "core_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "treasury_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "governance_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "initialParams",
+        "type": "tuple",
+        "internalType": "struct IIncentivesEngine.IncentiveParams",
+        "components": [
+          {
+            "name": "cliffDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "fullDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "vestingDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "bmaxWad",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "rewardMode",
+            "type": "uint8",
+            "internalType": "enum IIncentivesEngine.RewardMode"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "effectiveFrom",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "MAX_TRANCHES",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "claimAndCreateVesting",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "claimed",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "consolidateTranches",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "core",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "currentParamsId",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getCurrentParams",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct IIncentivesEngine.IncentiveParams",
+        "components": [
+          {
+            "name": "cliffDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "fullDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "vestingDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "bmaxWad",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "rewardMode",
+            "type": "uint8",
+            "internalType": "enum IIncentivesEngine.RewardMode"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "effectiveFrom",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getParams",
+    "inputs": [
+      {
+        "name": "paramsId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct IIncentivesEngine.IncentiveParams",
+        "components": [
+          {
+            "name": "cliffDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "fullDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "vestingDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "bmaxWad",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "rewardMode",
+            "type": "uint8",
+            "internalType": "enum IIncentivesEngine.RewardMode"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "effectiveFrom",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getUserTranches",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple[]",
+        "internalType": "struct IIncentivesEngine.DepositTranche[]",
+        "components": [
+          {
+            "name": "principalWad",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "depositTs",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "lastAccrualTs",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "paramsId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getUserVestings",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple[]",
+        "internalType": "struct IIncentivesEngine.RewardVestingTranche[]",
+        "components": [
+          {
+            "name": "rewardUnits",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "vestStart",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "vestDurationDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "withdrawnUnits",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "paramsId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "mode",
+            "type": "uint8",
+            "internalType": "enum IIncentivesEngine.RewardMode"
+          },
+          {
+            "name": "conversionRatio",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "governance",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "onDeposit",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "addedAssetsWad",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "onExit",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "assetsExitedWad",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "vestedUnits",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "slashedUnits",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "pendingReward",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "totalPendingWad",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setCore",
+    "inputs": [
+      {
+        "name": "core_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setParams",
+    "inputs": [
+      {
+        "name": "newParams",
+        "type": "tuple",
+        "internalType": "struct IIncentivesEngine.IncentiveParams",
+        "components": [
+          {
+            "name": "cliffDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "fullDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "vestingDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "bmaxWad",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "rewardMode",
+            "type": "uint8",
+            "internalType": "enum IIncentivesEngine.RewardMode"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "effectiveFrom",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setTreasury",
+    "inputs": [
+      {
+        "name": "treasury_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "trancheCount",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "transferGovernance",
+    "inputs": [
+      {
+        "name": "newGov",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "treasury",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "vestedAvailable",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "vestingIdx",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "vestingCount",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "withdrawVested",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "vestingIdx",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "paid",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "mode",
+        "type": "uint8",
+        "internalType": "enum IIncentivesEngine.RewardMode"
+      },
+      {
+        "name": "conversionRatio",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "GovernanceTransferred",
+    "inputs": [
+      {
+        "name": "oldGov",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newGov",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ParamsUpdated",
+    "inputs": [
+      {
+        "name": "newParamsId",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "params",
+        "type": "tuple",
+        "indexed": false,
+        "internalType": "struct IIncentivesEngine.IncentiveParams",
+        "components": [
+          {
+            "name": "cliffDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "fullDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "vestingDays",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "bmaxWad",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "rewardMode",
+            "type": "uint8",
+            "internalType": "enum IIncentivesEngine.RewardMode"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "effectiveFrom",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RewardAccrued",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "rewardUnitsWad",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RewardSlashed",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "vestingIdx",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "slashedUnits",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RewardVestingCreated",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "idx",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "rewardUnits",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
+        "name": "mode",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "enum IIncentivesEngine.RewardMode"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RewardWithdrawn",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "vestingIdx",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "paidUnits",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TrancheConsumed",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "idx",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "consumedWad",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TrancheCreated",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "idx",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "principalWad",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
+        "name": "paramsId",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TranchesConsolidated",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "mergedCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "remainingCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  }
+]
