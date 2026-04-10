@@ -479,6 +479,81 @@ type UpkeepAction @entity {
   txHash: Bytes!
 }
 
+# VaultUpkeep RealizeForQueue failure event. ID: txHash-logIndex
+type RealizeForQueueFailureEvent @entity {
+  id: ID!
+  chainId: Int!
+  target: BigInt!
+  reason: Bytes!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# VaultUpkeep parameter change events. ID: txHash-logIndex
+type UpkeepConfigEvent @entity {
+  id: ID!
+  chainId: Int!
+  paramName: String!
+  value: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Strategy rebalance event (inter-strategy). ID: txHash-logIndex
+type StrategyRebalanceEvent @entity {
+  id: ID!
+  chainId: Int!
+  totalMoved: BigInt!
+  strategyCount: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# MinDelay timelock events. ID: txHash-logIndex
+type MinDelayEvent @entity {
+  id: ID!
+  chainId: Int!
+  action: String!  # "submitted", "accepted", "revoked"
+  newDelay: BigInt
+  eta: BigInt
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# IncentivesEngine reconcile lifecycle events. ID: txHash-logIndex
+type ReconcileEvent @entity {
+  id: ID!
+  chainId: Int!
+  eventType: String!  # "pending", "reconciled", "failed", "skipped", "batchCompleted"
+  user: Bytes
+  pendingId: BigInt
+  assetsExitedWad: BigInt
+  vestedUnits: BigInt
+  slashedUnits: BigInt
+  processed: BigInt
+  remaining: BigInt
+  reason: Bytes
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# FeeDistributor pause events. ID: txHash-logIndex
+type PauseEvent @entity {
+  id: ID!
+  chainId: Int!
+  contract: String!
+  pauseType: String!  # "redeem", "funding"
+  paused: Boolean!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
 # =============================================================================
 # EVENT AUDIT TRAIL ENTITIES
 # =============================================================================

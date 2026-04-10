@@ -1,6 +1,6 @@
 {
   "name": "@multyr/subgraphs",
-  "version": "1.0.0",
+  "version": "2.0.8",
   "description": "The Graph subgraphs for Multyr vault ecosystem across Ethereum, Arbitrum, and Base",
   "type": "module",
   "scripts": {

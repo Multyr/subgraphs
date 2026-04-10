@@ -333,7 +333,14 @@ import {
   // IncentivesEngine v2 entities
   DepositTranche,
   RewardVestingTranche,
-  IncentiveParamsSet
+  IncentiveParamsSet,
+  // Pre-shadow hardening entities
+  RealizeForQueueFailureEvent,
+  UpkeepConfigEvent,
+  StrategyRebalanceEvent,
+  MinDelayEvent,
+  ReconcileEvent,
+  PauseEvent
 } from "../generated/schema"
 
 // Template for dynamic vault indexing
@@ -4059,4 +4066,225 @@ export function handleIncentiveParamsUpdated(event: ethereum.Event): void {
 
 export function handleIncentivesGovernanceTransferred(event: ethereum.Event): void {
   // Informational — governance change logged
+}
+
+// =============================================================================
+// NEW HANDLERS — Pre-Shadow Hardening (VaultUpkeep, Core, FeeDistributor, IncentivesEngine)
+// =============================================================================
+
+export function handleRealizeForQueueFailed(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new RealizeForQueueFailureEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.target = event.parameters[0].value.toBigInt()
+  entity.reason = event.parameters[1].value.toBytes()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleDeployRealizeCooldownSet(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new UpkeepConfigEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.paramName = "deployRealizeCooldown"
+  entity.value = event.parameters[0].value.toBigInt()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleReconcileHighThresholdSet(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new UpkeepConfigEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.paramName = "reconcileHighThreshold"
+  entity.value = event.parameters[0].value.toBigInt()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleStrategyRebalanceCooldownSet(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new UpkeepConfigEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.paramName = "strategyRebalanceCooldown"
+  entity.value = event.parameters[0].value.toBigInt()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleRealizedForQueue(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new StrategyRebalanceEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.totalMoved = event.parameters[1].value.toBigInt()
+  entity.strategyCount = BigInt.fromI32(0)
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleStrategiesRebalanced(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new StrategyRebalanceEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.totalMoved = event.parameters[0].value.toBigInt()
+  entity.strategyCount = event.parameters[1].value.toBigInt()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleQueuePrescanBoundHit(event: ethereum.Event): void {
+  // Telemetry event — logged but no entity needed
+}
+
+export function handleMinDelaySubmitted(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new MinDelayEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.action = "submitted"
+  entity.newDelay = event.parameters[0].value.toBigInt()
+  entity.eta = event.parameters[1].value.toBigInt()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleMinDelayAccepted(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new MinDelayEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.action = "accepted"
+  entity.newDelay = event.parameters[0].value.toBigInt()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleMinDelayRevoked(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new MinDelayEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.action = "revoked"
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleRedeemPauseUpdated(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new PauseEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.contract = "FeeDistributor"
+  entity.pauseType = "redeem"
+  entity.paused = event.parameters[0].value.toBoolean()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleFundingPauseUpdated(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new PauseEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.contract = "FeeDistributor"
+  entity.pauseType = "funding"
+  entity.paused = event.parameters[0].value.toBoolean()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+// --- IncentivesEngine Reconcile Lifecycle ---
+
+export function handleExitPendingRecorded(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new ReconcileEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.eventType = "pending"
+  entity.user = event.parameters[0].value.toAddress()
+  entity.assetsExitedWad = event.parameters[1].value.toBigInt()
+  entity.pendingId = event.parameters[2].value.toBigInt()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleExitReconciled(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new ReconcileEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.eventType = "reconciled"
+  entity.user = event.parameters[0].value.toAddress()
+  entity.pendingId = event.parameters[1].value.toBigInt()
+  entity.vestedUnits = event.parameters[2].value.toBigInt()
+  entity.slashedUnits = event.parameters[3].value.toBigInt()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleExitReconcileFailed(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new ReconcileEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.eventType = "failed"
+  entity.user = event.parameters[0].value.toAddress()
+  entity.pendingId = event.parameters[1].value.toBigInt()
+  entity.reason = event.parameters[2].value.toBytes()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleExitReconcileSkipped(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new ReconcileEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.eventType = "skipped"
+  entity.user = event.parameters[0].value.toAddress()
+  entity.pendingId = event.parameters[1].value.toBigInt()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleReconcileBatchCompleted(event: ethereum.Event): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let entity = new ReconcileEvent(id)
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.eventType = "batchCompleted"
+  entity.processed = event.parameters[0].value.toBigInt()
+  entity.remaining = event.parameters[1].value.toBigInt()
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  entity.save()
+}
+
+export function handleIncentivesCoreSet(event: ethereum.Event): void {
+  // Informational — IncentivesEngine core address changed
+}
+
+export function handleIncentivesTreasurySet(event: ethereum.Event): void {
+  // Informational — IncentivesEngine treasury address changed
 }

@@ -63,6 +63,14 @@ dataSources:
       eventHandlers:
         - event: UpkeepPerformed(uint8,uint256,bool)
           handler: handleUpkeepPerformed
+        - event: RealizeForQueueFailed(uint256,bytes)
+          handler: handleRealizeForQueueFailed
+        - event: DeployRealizeCooldownSet(uint64)
+          handler: handleDeployRealizeCooldownSet
+        - event: ReconcileHighThresholdSet(uint256)
+          handler: handleReconcileHighThresholdSet
+        - event: StrategyRebalanceCooldownSet(uint64)
+          handler: handleStrategyRebalanceCooldownSet
       file: ./src/mappings.ts
 
   - kind: ethereum/contract
@@ -159,6 +167,10 @@ dataSources:
           handler: handleGuardrailsUpdated
         - event: EpochPayoutUpdated(indexed address,indexed address)
           handler: handleEpochPayoutUpdated
+        - event: RedeemPauseUpdated(bool)
+          handler: handleRedeemPauseUpdated
+        - event: FundingPauseUpdated(bool)
+          handler: handleFundingPauseUpdated
       file: ./src/mappings.ts
 
   - kind: ethereum/contract
@@ -335,6 +347,40 @@ dataSources:
           handler: handleFeeDistributionFailed
       file: ./src/mappings.ts
 
+  # IncentivesEngine — Reconcile lifecycle (address updated post-deploy)
+  - kind: ethereum/contract
+    name: IncentivesEngine
+    network: arbitrum-one
+    source:
+      address: "0x0000000000000000000000000000000000000001"
+      abi: IncentivesEngine
+      startBlock: 446479922
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - ReconcileEvent
+      abis:
+        - name: IncentivesEngine
+          file: ./abis/IncentivesEngine.json
+      eventHandlers:
+        - event: ExitPendingRecorded(indexed address,uint256,uint256)
+          handler: handleExitPendingRecorded
+        - event: ExitReconciled(indexed address,uint256,uint256,uint256)
+          handler: handleExitReconciled
+        - event: ExitReconcileFailed(indexed address,uint256,bytes)
+          handler: handleExitReconcileFailed
+        - event: ExitReconcileSkipped(indexed address,uint256)
+          handler: handleExitReconcileSkipped
+        - event: ReconcileBatchCompleted(uint256,uint256)
+          handler: handleReconcileBatchCompleted
+        - event: CoreSet(indexed address)
+          handler: handleIncentivesCoreSet
+        - event: TreasurySet(indexed address)
+          handler: handleIncentivesTreasurySet
+      file: ./src/mappings.ts
+
 templates:
   - kind: ethereum/contract
     name: VaultTemplate
@@ -503,6 +549,18 @@ templates:
           handler: handleRoutedToStrategy
         - event: Realized(uint256)
           handler: handleRealized
+        - event: RealizedForQueue(uint256,uint256)
+          handler: handleRealizedForQueue
+        - event: StrategiesRebalanced(uint256,uint256)
+          handler: handleStrategiesRebalanced
+        - event: QueuePrescanBoundHit(uint256,uint256)
+          handler: handleQueuePrescanBoundHit
+        - event: MinDelaySubmitted(uint64,uint64)
+          handler: handleMinDelaySubmitted
+        - event: MinDelayAccepted(uint64)
+          handler: handleMinDelayAccepted
+        - event: MinDelayRevoked()
+          handler: handleMinDelayRevoked
         - event: ReserveTargetRestored(uint256)
           handler: handleReserveTargetRestored
         - event: EpochRolled(uint256)

@@ -4611,7 +4611,12 @@
     "type": "event",
     "name": "IncentivesEngineUpdated",
     "inputs": [
-      { "name": "newEngine", "type": "address", "indexed": true, "internalType": "address" }
+      {
+        "name": "newEngine",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
     ],
     "anonymous": false
   },
@@ -4619,7 +4624,12 @@
     "type": "event",
     "name": "RewardsPayoutManagerUpdated",
     "inputs": [
-      { "name": "newManager", "type": "address", "indexed": true, "internalType": "address" }
+      {
+        "name": "newManager",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
     ],
     "anonymous": false
   },
@@ -4627,9 +4637,24 @@
     "type": "event",
     "name": "RewardSharesMinted",
     "inputs": [
-      { "name": "user", "type": "address", "indexed": true, "internalType": "address" },
-      { "name": "usdcEquivalent", "type": "uint256", "indexed": false, "internalType": "uint256" },
-      { "name": "shares", "type": "uint256", "indexed": false, "internalType": "uint256" }
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "usdcEquivalent",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "shares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
     ],
     "anonymous": false
   },
@@ -4637,10 +4662,30 @@
     "type": "event",
     "name": "InstantExit",
     "inputs": [
-      { "name": "user", "type": "address", "indexed": true, "internalType": "address" },
-      { "name": "shares", "type": "uint256", "indexed": false, "internalType": "uint256" },
-      { "name": "netAssets", "type": "uint256", "indexed": false, "internalType": "uint256" },
-      { "name": "feeShares", "type": "uint256", "indexed": false, "internalType": "uint256" }
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "shares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "netAssets",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "feeShares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
     ],
     "anonymous": false
   },
@@ -4648,10 +4693,30 @@
     "type": "event",
     "name": "ForceExit",
     "inputs": [
-      { "name": "user", "type": "address", "indexed": true, "internalType": "address" },
-      { "name": "shares", "type": "uint256", "indexed": false, "internalType": "uint256" },
-      { "name": "netAssets", "type": "uint256", "indexed": false, "internalType": "uint256" },
-      { "name": "feeShares", "type": "uint256", "indexed": false, "internalType": "uint256" }
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "shares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "netAssets",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "feeShares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
     ],
     "anonymous": false
   },
@@ -4659,9 +4724,24 @@
     "type": "event",
     "name": "FeePaid",
     "inputs": [
-      { "name": "user", "type": "address", "indexed": true, "internalType": "address" },
-      { "name": "feeCollector", "type": "address", "indexed": true, "internalType": "address" },
-      { "name": "feeShares", "type": "uint256", "indexed": false, "internalType": "uint256" }
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "feeCollector",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "feeShares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
     ],
     "anonymous": false
   },
@@ -4669,7 +4749,12 @@
     "type": "event",
     "name": "QueueSizeWarning",
     "inputs": [
-      { "name": "queueLength", "type": "uint256", "indexed": false, "internalType": "uint256" }
+      {
+        "name": "queueLength",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
     ],
     "anonymous": false
   },
@@ -4677,11 +4762,117 @@
     "type": "event",
     "name": "QueueClaimSkippedEscrowUnderflow",
     "inputs": [
-      { "name": "claimId", "type": "uint256", "indexed": true, "internalType": "uint256" },
-      { "name": "user", "type": "address", "indexed": true, "internalType": "address" },
-      { "name": "sharesRequested", "type": "uint256", "indexed": false, "internalType": "uint256" },
-      { "name": "escrowBalance", "type": "uint256", "indexed": false, "internalType": "uint256" }
+      {
+        "name": "claimId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "sharesRequested",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "escrowBalance",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
     ],
     "anonymous": false
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "target",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "name": "got",
+        "type": "uint256"
+      }
+    ],
+    "name": "RealizedForQueue",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "totalMoved",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "name": "strategyCount",
+        "type": "uint256"
+      }
+    ],
+    "name": "StrategiesRebalanced",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "scanned",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "name": "bound",
+        "type": "uint256"
+      }
+    ],
+    "name": "QueuePrescanBoundHit",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "newDelay",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "name": "eta",
+        "type": "uint64"
+      }
+    ],
+    "name": "MinDelaySubmitted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "newDelay",
+        "type": "uint64"
+      }
+    ],
+    "name": "MinDelayAccepted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [],
+    "name": "MinDelayRevoked",
+    "type": "event"
   }
 ]
