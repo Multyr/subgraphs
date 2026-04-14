@@ -784,6 +784,41 @@ templates:
           handler: handleAdapterAutoQuarantined
         - event: AdapterFlagged(indexed address,bool)
           handler: handleAdapterFlagged
+        # v2.0.7 — Strategy V10 lifecycle events
+        - event: RegimeChanged(uint8)
+          handler: handleRegimeChanged
+        - event: StabilityUpdated(indexed address,uint16,uint16,uint16,uint16)
+          handler: handleStabilityUpdated
+        - event: GasEmaUpdated(indexed address,uint64,bool)
+          handler: handleGasEmaUpdated
+        - event: RebalancePlanCreated(uint8,uint256,uint256)
+          handler: handleRebalancePlanCreated
+        - event: RebalanceStepExecuted(uint8,uint8)
+          handler: handleRebalanceStepExecuted
+        - event: RebalancePlanCancelled()
+          handler: handleRebalancePlanCancelled
+        - event: RebalancePlanInvalidated(uint256,uint256)
+          handler: handleRebalancePlanInvalidated
+        - event: AdapterSkippedLowConfidence(indexed address,uint256,uint256)
+          handler: handleAdapterSkippedLowConfidence
+        - event: AdapterSkippedOverCap(indexed address,uint256,uint256)
+          handler: handleAdapterSkippedOverCap
+        - event: AdapterUsingStaleExternalTVL(indexed address,uint256,uint256)
+          handler: handleAdapterUsingStaleExternalTVL
+        - event: AdapterDepositFailed(indexed address,uint256,bytes)
+          handler: handleAdapterDepositFailed
+        - event: AdapterWithdrawFailed(indexed address,uint256,bytes)
+          handler: handleAdapterWithdrawFailed
+        - event: AdapterHarvestFailed(indexed address,bytes)
+          handler: handleAdapterHarvestFailed
+        - event: AdapterFundsStranded(indexed address,uint256)
+          handler: handleAdapterFundsStranded
+        - event: ScoringComputed(indexed address,uint256,uint256,uint256,uint256,uint16,uint256,uint256,uint256,uint16)
+          handler: handleScoringComputed
+        - event: DeployIdleExecuted(uint256,uint256)
+          handler: handleDeployIdleExecuted
+        - event: DegradedViewsObserved(uint16)
+          handler: handleDegradedViewsObserved
       file: ./src/mappings.ts
 
   # =========================================================================

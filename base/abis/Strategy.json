@@ -1,200 +1,111 @@
 [
-  {
-    "type": "function",
-    "name": "name",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "description",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "core",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "adapterCount",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "adapters",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "enabled",
-    "inputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "flagged",
-    "inputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "event",
-    "name": "AdapterAdded",
-    "inputs": [
-      {
-        "name": "adapter",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "AdapterToggled",
-    "inputs": [
-      {
-        "name": "adapter",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "enabled",
-        "type": "bool",
-        "indexed": false,
-        "internalType": "bool"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "AdapterActivated",
-    "inputs": [
-      {
-        "name": "adapter",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "activatedAt",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "AdapterAutoQuarantined",
-    "inputs": [
-      {
-        "name": "adapter",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "consecutiveFailures",
-        "type": "uint8",
-        "indexed": false,
-        "internalType": "uint8"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "AdapterFlagged",
-    "inputs": [
-      {
-        "name": "adapter",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "flagged",
-        "type": "bool",
-        "indexed": false,
-        "internalType": "bool"
-      }
-    ],
-    "anonymous": false
-  }
+  { "type": "function", "name": "name", "inputs": [], "outputs": [{ "name": "", "type": "string", "internalType": "string" }], "stateMutability": "view" },
+  { "type": "function", "name": "description", "inputs": [], "outputs": [{ "name": "", "type": "string", "internalType": "string" }], "stateMutability": "view" },
+  { "type": "function", "name": "core", "inputs": [], "outputs": [{ "name": "", "type": "address", "internalType": "address" }], "stateMutability": "view" },
+  { "type": "function", "name": "adapterCount", "inputs": [], "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }], "stateMutability": "view" },
+  { "type": "function", "name": "adapters", "inputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }], "outputs": [{ "name": "", "type": "address", "internalType": "address" }], "stateMutability": "view" },
+  { "type": "function", "name": "enabled", "inputs": [{ "name": "", "type": "address", "internalType": "address" }], "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }], "stateMutability": "view" },
+  { "type": "function", "name": "flagged", "inputs": [{ "name": "", "type": "address", "internalType": "address" }], "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }], "stateMutability": "view" },
+
+  { "type": "event", "name": "AdapterAdded", "inputs": [{ "name": "adapter", "type": "address", "indexed": true, "internalType": "address" }], "anonymous": false },
+  { "type": "event", "name": "AdapterToggled", "inputs": [{ "name": "adapter", "type": "address", "indexed": true, "internalType": "address" }, { "name": "enabled", "type": "bool", "indexed": false, "internalType": "bool" }], "anonymous": false },
+  { "type": "event", "name": "AdapterActivated", "inputs": [{ "name": "adapter", "type": "address", "indexed": true, "internalType": "address" }, { "name": "activatedAt", "type": "uint64", "indexed": false, "internalType": "uint64" }], "anonymous": false },
+  { "type": "event", "name": "AdapterAutoQuarantined", "inputs": [{ "name": "adapter", "type": "address", "indexed": true, "internalType": "address" }, { "name": "consecutiveFailures", "type": "uint8", "indexed": false, "internalType": "uint8" }], "anonymous": false },
+  { "type": "event", "name": "AdapterFlagged", "inputs": [{ "name": "adapter", "type": "address", "indexed": true, "internalType": "address" }, { "name": "flagged", "type": "bool", "indexed": false, "internalType": "bool" }], "anonymous": false },
+
+  { "type": "event", "name": "RegimeChanged", "inputs": [{ "name": "regime", "type": "uint8", "indexed": false, "internalType": "uint8" }], "anonymous": false },
+
+  { "type": "event", "name": "StabilityUpdated", "inputs": [
+    { "name": "adapter", "type": "address", "indexed": true, "internalType": "address" },
+    { "name": "prevApyBps", "type": "uint16", "indexed": false, "internalType": "uint16" },
+    { "name": "currApyBps", "type": "uint16", "indexed": false, "internalType": "uint16" },
+    { "name": "rawStabilityBps", "type": "uint16", "indexed": false, "internalType": "uint16" },
+    { "name": "emaStabilityBps", "type": "uint16", "indexed": false, "internalType": "uint16" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "GasEmaUpdated", "inputs": [
+    { "name": "adapter", "type": "address", "indexed": true, "internalType": "address" },
+    { "name": "emaGas", "type": "uint64", "indexed": false, "internalType": "uint64" },
+    { "name": "isDeposit", "type": "bool", "indexed": false, "internalType": "bool" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "RebalancePlanCreated", "inputs": [
+    { "name": "actionCount", "type": "uint8", "indexed": false, "internalType": "uint8" },
+    { "name": "totalMoved", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "tvlSnapshot", "type": "uint256", "indexed": false, "internalType": "uint256" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "RebalanceStepExecuted", "inputs": [
+    { "name": "fromAction", "type": "uint8", "indexed": false, "internalType": "uint8" },
+    { "name": "toAction", "type": "uint8", "indexed": false, "internalType": "uint8" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "RebalancePlanCancelled", "inputs": [], "anonymous": false },
+
+  { "type": "event", "name": "RebalancePlanInvalidated", "inputs": [
+    { "name": "planTvl", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "currentTvl", "type": "uint256", "indexed": false, "internalType": "uint256" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "AdapterSkippedLowConfidence", "inputs": [
+    { "name": "adapter", "type": "address", "indexed": true, "internalType": "address" },
+    { "name": "cachedTVL", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "confidence", "type": "uint256", "indexed": false, "internalType": "uint256" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "AdapterSkippedOverCap", "inputs": [
+    { "name": "adapter", "type": "address", "indexed": true, "internalType": "address" },
+    { "name": "current", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "cap", "type": "uint256", "indexed": false, "internalType": "uint256" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "AdapterUsingStaleExternalTVL", "inputs": [
+    { "name": "adapter", "type": "address", "indexed": true, "internalType": "address" },
+    { "name": "cachedTVL", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "age", "type": "uint256", "indexed": false, "internalType": "uint256" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "AdapterDepositFailed", "inputs": [
+    { "name": "adapter", "type": "address", "indexed": true, "internalType": "address" },
+    { "name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "reason", "type": "bytes", "indexed": false, "internalType": "bytes" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "AdapterWithdrawFailed", "inputs": [
+    { "name": "adapter", "type": "address", "indexed": true, "internalType": "address" },
+    { "name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "reason", "type": "bytes", "indexed": false, "internalType": "bytes" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "AdapterHarvestFailed", "inputs": [
+    { "name": "adapter", "type": "address", "indexed": true, "internalType": "address" },
+    { "name": "reason", "type": "bytes", "indexed": false, "internalType": "bytes" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "AdapterFundsStranded", "inputs": [
+    { "name": "adapter", "type": "address", "indexed": true, "internalType": "address" },
+    { "name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "ScoringComputed", "inputs": [
+    { "name": "adapter", "type": "address", "indexed": true, "internalType": "address" },
+    { "name": "scoreRaw", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "scoreNorm", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "targetAlloc", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "currentPos", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "apyBps", "type": "uint16", "indexed": false, "internalType": "uint16" },
+    { "name": "liqBps", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "riskBps", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "stabilityBps", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "incentiveBps", "type": "uint16", "indexed": false, "internalType": "uint16" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "DeployIdleExecuted", "inputs": [
+    { "name": "deployed", "type": "uint256", "indexed": false, "internalType": "uint256" },
+    { "name": "remainingIdle", "type": "uint256", "indexed": false, "internalType": "uint256" }
+  ], "anonymous": false },
+
+  { "type": "event", "name": "DegradedViewsObserved", "inputs": [
+    { "name": "fallbackBps", "type": "uint16", "indexed": false, "internalType": "uint16" }
+  ], "anonymous": false }
 ]

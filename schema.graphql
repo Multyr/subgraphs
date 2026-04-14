@@ -1591,7 +1591,174 @@ type StrategyDeployment @entity {
   updatedAtBlock: BigInt!
 }
 
-# Adapter binding within a strategy. ID: "{strategyAddress}-{adapterAddress}"
+# ============================================================================
+# v2.0.7 — Strategy V10 lifecycle entities (Option B+)
+# ============================================================================
+
+# Latest regime snapshot per strategy. ID: "{strategyAddress}-{chainId}"
+type RegimeSnapshot @entity {
+  id: ID!
+  chainId: Int!
+  strategy: StrategyDeployment!
+  regime: Int!
+  changedAtBlock: BigInt!
+  changedAtTimestamp: BigInt!
+}
+
+# Regime change event log. ID: "{txHash}-{logIndex}"
+type RegimeChangeEvent @entity {
+  id: ID!
+  chainId: Int!
+  strategy: StrategyDeployment!
+  regime: Int!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+# Latest stability EMA snapshot per adapter. ID: "{strategyAddress}-{adapterAddress}-{chainId}"
+type StabilitySnapshot @entity {
+  id: ID!
+  chainId: Int!
+  strategy: StrategyDeployment!
+  adapter: Bytes!
+  prevApyBps: Int!
+  currApyBps: Int!
+  rawStabilityBps: Int!
+  emaStabilityBps: Int!
+  updatedAtBlock: BigInt!
+  updatedAtTimestamp: BigInt!
+}
+
+# Stability update time series. ID: "{txHash}-{logIndex}"
+type StabilityUpdateEvent @entity {
+  id: ID!
+  chainId: Int!
+  strategy: StrategyDeployment!
+  adapter: Bytes!
+  prevApyBps: Int!
+  currApyBps: Int!
+  rawStabilityBps: Int!
+  emaStabilityBps: Int!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}
+
+# Gas EMA snapshot per adapter/direction. ID: "{strategyAddress}-{adapterAddress}-{isDeposit}-{chainId}"
+type GasEmaSnapshot @entity {
+  id: ID!
+  chainId: Int!
+  strategy: StrategyDeployment!
+  adapter: Bytes!
+  isDeposit: Boolean!
+  emaGas: BigInt!
+  updatedAtBlock: BigInt!
+  updatedAtTimestamp: BigInt!
+}
+
+# Rebalance plan lifecycle. ID: "{txHash}-{logIndex}" of RebalancePlanCreated
+type RebalancePlan @entity {
+  id: ID!
+  chainId: Int!
+  strategy: StrategyDeployment!
+  actionCount: Int!
+  totalMoved: BigInt!
+  tvlSnapshot: BigInt!
+  status: String!  # "CREATED" | "EXECUTED" | "CANCELLED" | "INVALIDATED"
+  invalidationPlanTvl: BigInt
+  invalidationCurrentTvl: BigInt
+  steps: [RebalanceStep!]! @derivedFrom(field: "plan")
+  createdAtBlock: BigInt!
+  createdAtTimestamp: BigInt!
+  settledAtBlock: BigInt
+  settledAtTimestamp: BigInt
+}
+
+# Rebalance step executed. ID: "{txHash}-{logIndex}"
+type RebalanceStep @entity {
+  id: ID!
+  chainId: Int!
+  plan: RebalancePlan!
+  fromAction: Int!
+  toAction: Int!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}
+
+# Adapter allocation skip log. ID: "{txHash}-{logIndex}"
+type AdapterSkipEvent @entity {
+  id: ID!
+  chainId: Int!
+  strategy: StrategyDeployment!
+  adapter: Bytes!
+  reason: String!  # "LOW_CONFIDENCE" | "OVER_CAP" | "STALE_EXTERNAL_TVL"
+  cachedTVL: BigInt
+  confidence: BigInt
+  current: BigInt
+  cap: BigInt
+  age: BigInt
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}
+
+# Adapter failure log (deposit/withdraw/harvest/stranded). ID: "{txHash}-{logIndex}"
+type AdapterFailureEvent @entity {
+  id: ID!
+  chainId: Int!
+  strategy: StrategyDeployment!
+  adapter: Bytes!
+  kind: String!  # "DEPOSIT" | "WITHDRAW" | "HARVEST" | "FUNDS_STRANDED"
+  amount: BigInt
+  reason: Bytes
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}
+
+# Latest scoring snapshot per adapter. ID: "{strategyAddress}-{adapterAddress}-{chainId}"
+# Mirrors ScoringComputed event signature
+type ScoringSnapshot @entity {
+  id: ID!
+  chainId: Int!
+  strategy: StrategyDeployment!
+  adapter: Bytes!
+  scoreRaw: BigInt!
+  scoreNorm: BigInt!
+  targetAlloc: BigInt!
+  currentPos: BigInt!
+  apyBps: Int!
+  liqBps: BigInt!
+  riskBps: BigInt!
+  stabilityBps: BigInt!
+  incentiveBps: Int!
+  updatedAtBlock: BigInt!
+  updatedAtTimestamp: BigInt!
+}
+
+# Deploy idle execution event. ID: "{txHash}-{logIndex}"
+type DeployIdleEvent @entity {
+  id: ID!
+  chainId: Int!
+  strategy: StrategyDeployment!
+  deployed: BigInt!
+  remainingIdle: BigInt!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}
+
+# Strategy health flag (degraded/stale state). ID: "{strategyAddress}-{chainId}" (singleton per strategy)
+type StrategyHealthFlag @entity {
+  id: ID!
+  chainId: Int!
+  strategy: StrategyDeployment!
+  degraded: Boolean!
+  fallbackBps: Int
+  lastDegradedObservedAtBlock: BigInt
+  lastDegradedObservedAtTimestamp: BigInt
+  updatedAtBlock: BigInt!
+  updatedAtTimestamp: BigInt!
+}
+
+# Adapter binding within a strategy. ID: "{strategyAddress}-{adapterAddress}-{chainId}"
 type AdapterBinding @entity {
   id: ID!
   chainId: Int!
