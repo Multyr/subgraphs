@@ -1,139 +1,95 @@
-# Multyr Vault Subgraph v3.1
+# subgraphs
 
-Subgraph for indexing Multyr vaults across Arbitrum, Base, and Ethereum.
+> The Graph subgraphs for the [Multyr Protocol](https://github.com/Multyr) — a
+> non-custodial ERC-4626 vault platform on Arbitrum. Indexes vault factory,
+> vaults, user positions, fees, claims, and governance across chains.
 
-**Studio**: https://thegraph.com/studio/subgraph/multyr-subgraph
-**Slug**: `multyr-subgraph`
-**Current deploy**: v3.1.0
+[![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-blue.svg)](./LICENSE)
+[![Network: Arbitrum One](https://img.shields.io/badge/network-Arbitrum%20One-28a0f0.svg)]()
 
-## Features
+## Overview
 
-- **ERC-4626 tracking**: Deposits, Withdrawals, Transfers, ForceWithdraw
-- **APY**: canonical sharePrice (decimals-aware), 30-day lookback, 1d/7d/30d averages
-- **FIFO Cost Basis**: position lots, realized/unrealized P&L
-- **USD Pricing**: Chainlink with staleness tracking
-- **Ops Dashboard**: ProtocolDeployment, VaultDeployment, StrategyDeployment wiring
-- **Automation**: VaultUpkeep, StrategyUpkeep, FeeCollectorUpkeep events + bindings
-- **Vault Lifecycle**: VaultFactory v2 with deprecateVault, setVaultStatus, removeVault
-- **Multi-chain**: identical schema, per-chain datasource config
+This repository contains the canonical subgraph definitions for the Multyr
+Protocol. A single shared `schema.graphql` is indexed identically across every
+supported network, with per-chain `subgraph.yaml` manifests and mappings.
 
-## Directory Structure
+- **Full ERC-4626 tracking** — deposits, withdrawals, transfers, share accounting
+- **FIFO cost basis** — accurate per-user P&L via position lots
+- **USD pricing** — Chainlink feeds with fallback
+- **Daily snapshots** — historical TVL and APY (`VaultDayData`, `UserPositionDayData`)
+- **Claim queue lifecycle** — async withdrawal requests, settlements, force-withdraws
+- **Fees & crystallization** — performance/management fee events, perf-fee mints
+- **Governance & lifecycle** — module changes, role changes, seal events, timelocks
+
+## Supported networks
+
+| Network | Status | VaultFactory |
+|---|---|---|
+| Arbitrum One (`arbitrum-one`, chainId 42161) | Live | `0x1E5d3b7a88776Bbea48a81A4E8f195195EdCDc38` |
+| Base | Template | — |
+| Ethereum | Template | — |
+
+Arbitrum One is the production deployment. Base and Ethereum manifests share the
+same schema and mappings and are provided as templates for future deployments.
+
+## Repository structure
 
 ```
-├── README.md
-├── schema.graphql              # Shared schema (all chains)
-├── shared/                     # Shared TypeScript helpers
-│   ├── constants.ts
-│   ├── entities.ts
-│   ├── fifo.ts
-│   └── pricing.ts
-├── arbitrum/
-│   ├── subgraph.yaml           # Arbitrum config (production addresses)
-│   ├── src/
-│   │   ├── mappings.ts         # Event handlers
-│   │   └── helpers/
-│   │       ├── entities.ts     # Entity helpers (canonical)
-│   │       ├── constants.ts
-│   │       ├── fifo.ts
-│   │       └── pricing.ts
-│   └── abis/                   # Contract ABIs
-├── base/                       # Same structure, placeholder addresses
-├── ethereum/                   # Same structure, placeholder addresses
-└── docs/
-    ├── DEPLOYMENT.md
-    ├── IMPLEMENTATION_GUIDE.md
-    ├── SUBGRAPH_MULTI_FACTORY_SPEC.md
-    ├── TEST-STATUS.md
-    ├── assemblyscript-compiler-gotchas.md
-    ├── bootstrap-registry.md   # Non-recoverable deploy-time wiring
-    └── bootstrap-manifest.json # Canonical values for ops console fallback
+schema.graphql            # Shared entity schema (all chains)
+shared/                   # Shared AssemblyScript helpers (constants, entities, fifo, pricing)
+arbitrum/
+  subgraph.yaml           # Arbitrum One manifest (VaultFactory, VaultUpkeep, GlobalConfig, IncentivesEngine)
+  src/mappings.ts         # Event handlers
+  abis/                   # Contract ABIs
+base/                     # Base manifest + mappings (template)
+ethereum/                 # Ethereum manifest + mappings (template)
 ```
 
-## Production Addresses (Arbitrum)
+## Indexed entities
 
-| Datasource | Address | Status |
-|-----------|---------|--------|
-| VaultFactory v2 | `0x4201311F1333843fb92a30c687B9C3824E53CA1d` | Active |
-| VaultUpkeep | `0xe5c2ba17bf294b70c21498fcc74975c86d380c9d` | Active |
-| GlobalConfig | `0x4A6a4E1D3120Bd016C96cf035d3FAB99D4a0c6Ce` | Active |
-| StrategyUpkeep v4 | `0x9D2c6AF78F57fEAe4322e86E5952Da4e414ada82` | Active |
-| FeeCollectorUpkeep | `0x5D4e0b9AA48234bC2Cb10b0A2f97430A4a9a8EA8` | Active |
-| OpsCollector | `0x78Db3575A3477adfEd19F74142b7ed1a592f80D1` | Active |
-| FeeDistributor | `0x855018a8BCe730ed528b426E78e9A5b28fAb457E` | Active |
-| EpochPayout | `0x15F5619256db081c1694f6966e25d1B234D2D897` | Active |
-| ReferralBinding | `0x864281D1A7b0E7d0071ea6AEC43b0fE0D7106b1b` | Active |
-| PartnerRegistry | `0xe66f441835c9Fa8833E5Fd0a67eB42Ef0a83a9e7` | Active |
-| DepositRouter | `0x6f051953f2f9b1bb4fe1b6ad537877af01a2e369` | Active |
+Core: `Protocol`, `VaultFactory`, `Vault`, `VaultStrategy`, `StrategyRoute`.
+Users & positions: `User`, `UserVaultPosition`, `PositionLot`, `UserPositionDayData`.
+Activity: `Transaction`, `ClaimRequest`, `ClaimQueueEvent`, `ForceWithdrawEvent`,
+`EpochEvent`, `UpkeepAction`, `UpkeepBackoffEvent`, `QueueSettleFailureEvent`.
+Economics: `FeeEvent`, `Crystallization`, `PerfFeeMint`, `VaultRealization`,
+`ReserveRestore`, `TokenPrice`, `ChainlinkFeed`, `VaultDayData`.
+Governance: `ModuleChange`, `RoleChange`, `SealEvent`, `ComponentTimelockEvent`,
+`SharesFreezeEvent`.
 
-Base and Ethereum use placeholder addresses (not yet deployed).
+See [`schema.graphql`](./schema.graphql) for the full definitions.
 
-## Quick Start
+## Quick start
+
+Prerequisites: Node.js 18+, a The Graph Studio account (or a self-hosted Graph node).
 
 ```bash
-# Install
 npm install
 
-# Build Arbitrum
+# Generate AssemblyScript types (explicit --output-dir required for AS 0.19.x)
 npx graph codegen arbitrum/subgraph.yaml --output-dir arbitrum/generated
+
+# Build
 npx graph build arbitrum/subgraph.yaml
 
-# Deploy to Studio
-npx graph auth --studio <DEPLOY_KEY>
-npx graph deploy multyr-subgraph arbitrum/subgraph.yaml --studio --version-label v3.1.0
+# Deploy to The Graph Studio
+npx graph deploy --studio <subgraph-slug>
 ```
 
-## Key Entities
+When modifying the Arbitrum mappings, mirror the changes into `base/` and
+`ethereum/` (the schema is identical across chains).
 
-### Core
-| Entity | Description |
-|--------|-------------|
-| `Vault` | ERC-4626 vault state, APY, fees, status, components |
-| `VaultDayData` | Daily snapshots: TVL, sharePrice, APY, volume |
-| `UserVaultPosition` | User holdings with FIFO cost basis and P&L |
-| `Transaction` | Deposit/Withdraw/Transfer with USD values |
-| `ClaimRequest` | Claim queue lifecycle |
+## Related repositories
 
-### Ops Dashboard
-| Entity | Description |
-|--------|-------------|
-| `ProtocolDeployment` | Chain-level shared components (factory, globalConfig, priceOracle, periphery) |
-| `VaultDeployment` | Per-vault wiring (BM, router, health, fee, modules, governance, sealed) |
-| `StrategyDeployment` | Per-strategy wiring (enabled, priority, weight, upkeep) |
-| `VaultUpkeepBinding` | Binding: VaultUpkeep → Vault |
-| `StrategyUpkeepBinding` | Binding: StrategyUpkeep → Strategy (with upkeepKind) |
+- Core protocol: [Multyr/multyr-core](https://github.com/Multyr/multyr-core)
+- Periphery: [Multyr/multyr-periphery](https://github.com/Multyr/multyr-periphery)
+- Strategies: [Multyr/multyr-strategies](https://github.com/Multyr/multyr-strategies)
 
-### Periphery
-| Entity | Description |
-|--------|-------------|
-| `UpkeepAction` | VaultUpkeep + StrategyUpkeep + FeeCollectorUpkeep events |
-| `OpsSplitEvent` | OpsCollector fee split |
-| `FeeDistributorRedeemEvent` | Share redemption for USDC |
-| `EpochRootPublishedEvent` | Merkle root for epoch claims |
+## License
 
-## Bootstrap Registry
+[BUSL-1.1](./LICENSE) — Business Source License 1.1. Change Date: four years from
+publication; Change License: GPL-2.0-or-later.
 
-For vault v4 on Arbitrum, `queueModule` and `adminModule` are not recoverable from the subgraph (deploy-time event emitted before template creation). See [docs/bootstrap-registry.md](docs/bootstrap-registry.md) and [docs/bootstrap-manifest.json](docs/bootstrap-manifest.json).
+## Security
 
-The ops console should:
-1. Read `VaultDeployment` from subgraph (primary source)
-2. If `queueModule`/`adminModule` are null → complete from bootstrap manifest
-3. Never use bootstrap for fields the subgraph can populate
-
-## Version History
-
-| Version | Date | Changes |
-|---------|------|---------|
-| v3.1.0 | 2026-03-18 | priceOracle in ProtocolDeployment, gap analysis |
-| v3.0.0 | 2026-03-18 | APY fix, crash patterns, ops dashboard, upkeep datasources, multi-chain parity |
-| v2.0.0 | 2026-03-18 | VaultFactory v2 (deprecate, remove, setVaultStatus) |
-| v1.3.0 | 2026-03-17 | VaultUpkeep + DepositRouter v4 addresses |
-| v1.2.0 | 2026-03-16 | GlobalConfig v2 address |
-
-## Documentation
-
-- [Deployment Guide](docs/DEPLOYMENT.md)
-- [Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)
-- [Multi-Factory Spec](docs/SUBGRAPH_MULTI_FACTORY_SPEC.md)
-- [Test Status](docs/TEST-STATUS.md)
-- [AssemblyScript Gotchas](docs/assemblyscript-compiler-gotchas.md)
-- [Bootstrap Registry](docs/bootstrap-registry.md)
+Please report vulnerabilities responsibly to **security@multyr.fi**. See
+[SECURITY.md](./SECURITY.md). Do not open public issues for security reports.
