@@ -132,7 +132,10 @@ import {
   // Vault routing configured
   VaultRoutingConfigured as VaultRoutingConfiguredEvent,
   // Ecosystem config
-  EcosystemConfigured as EcosystemConfiguredEvent
+  EcosystemConfigured as EcosystemConfiguredEvent,
+  // SG-10 / SG-11
+  ModuleAuthorized as ModuleAuthorizedEvent,
+  DeadDepositSeeded as DeadDepositSeededEvent
 } from "../generated/templates/VaultTemplate/Vault"
 
 // StrategyRouter Events + Contract binding
@@ -214,7 +217,8 @@ import {
 import {
   DefaultOracleConfigSet as DefaultOracleConfigSetEvent,
   AssetOracleConfigSet as AssetOracleConfigSetEvent,
-  VaultOracleOverrideSet as VaultOracleOverrideSetEvent
+  VaultOracleOverrideSet as VaultOracleOverrideSetEvent,
+  VaultOverrideCleared as VaultOverrideClearedEvent
 } from "../generated/GlobalConfig/GlobalConfig"
 
 // =============================================================================
@@ -302,6 +306,8 @@ import {
   GuardianPauseEvent,
   ComponentUpdate,
   OwnershipEvent,
+  ModuleAuthorizationEvent,
+  DeadDepositEvent,
   VaultStrategy,
   StrategyRouter,
   StrategyRouterEvent,
@@ -423,6 +429,34 @@ import {
   getOrCreateUser,
   updateUserAggregates
 } from "./helpers/entities"
+
+import {
+  mapVaultUpkeepOp,
+  mapStrategyUpkeepOp,
+  mapPeripheryUpkeepOp,
+  setUpkeepGas,
+  setHarvestGas
+} from "./helpers/upkeep"
+
+import { openPause, closePause } from "./helpers/pause"
+
+import {
+  snapshotVaultHourData,
+  recordHourlyDeposit,
+  recordHourlyWithdraw
+} from "./helpers/vaultHourData"
+
+import {
+  recordStrategyHarvest,
+  recordStrategyRouted,
+  recordStrategyRebalance
+} from "./helpers/strategyDayData"
+
+import {
+  snapshotAdapterHealth,
+  recordAdapterFailure,
+  recordAdapterApy
+} from "./helpers/adapterHealth"
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -679,6 +713,9 @@ export function handleDeposit(event: DepositEvent): void {
     dayData.save()
   }
 
+  // SG-7 — hourly bucket
+  recordHourlyDeposit(vault, event.block.timestamp, event.params.assets, assetsUsd, isNewUser)
+
   let user = getOrCreateUser(event.params.owner, event.block)
   if (isNewUser) {
     user.totalPositions = user.totalPositions + 1
@@ -741,6 +778,9 @@ export function handleWithdraw(event: WithdrawEvent): void {
 
   updateVaultApyMetrics(vault, dayId)
   vault.save()
+
+  // SG-7 — hourly bucket
+  recordHourlyWithdraw(vault, event.block.timestamp, event.params.assets, assetsUsd)
 
   let position = getOrCreateUserPosition(event.params.owner, vault, event.block)
   let fifoResult = consumeSharesFIFO(
@@ -1299,6 +1339,7 @@ export function handleCrystallized(event: CrystallizedEvent): void {
   // Crystallization changes PPS — refresh and snapshot APY
   refreshVaultState(vault, event.block)
   snapshotVaultDayData(vault, event.block)
+  snapshotVaultHourData(vault, event.block)
 }
 
 export function handlePerfFeeMinted(event: PerfFeeMintedEvent): void {
@@ -1423,6 +1464,9 @@ export function handleRoutedToStrategy(event: RoutedToStrategyEvent): void {
   route.blockNumber = event.block.number
   route.txHash = event.transaction.hash
   route.save()
+
+  // SG-8 — per-strategy daily routing flow
+  recordStrategyRouted(vault, event.params.strategy, event.block.timestamp, event.params.amount, event.params.cashAfter)
 }
 
 export function handleRealized(event: RealizedEvent): void {
@@ -1463,6 +1507,7 @@ export function handleReserveTargetRestored(event: ReserveTargetRestoredEvent): 
   // Reserve restore changes totalAssets — refresh and snapshot APY
   refreshVaultState(vault, event.block)
   snapshotVaultDayData(vault, event.block)
+  snapshotVaultHourData(vault, event.block)
 }
 
 export function handleEpochRolled(event: EpochRolledEvent): void {
@@ -1509,6 +1554,7 @@ export function handleVaultPpsSnapshot(event: VaultPpsSnapshotEvent): void {
   vault.updatedAt = event.block.timestamp
   // APY snapshot — canonical save point
   snapshotVaultDayData(vault, event.block)
+  snapshotVaultHourData(vault, event.block)
 }
 
 export function handleNavSmoothUpdated(event: NavSmoothUpdatedEvent): void {
@@ -1564,6 +1610,43 @@ export function handleModuleSet(event: ModuleSetEvent): void {
 
   vault.updatedAt = event.block.timestamp
   vault.save()
+}
+
+// SG-10 — ModuleAuthorized(address indexed module, bool authorized)
+export function handleModuleAuthorized(event: ModuleAuthorizedEvent): void {
+  let vaultId = getVaultId(event.address)
+  let vault = Vault.load(vaultId)
+  if (vault == null) return
+
+  let id = createEventId(event.transaction.hash, event.logIndex)
+  let evt = new ModuleAuthorizationEvent(id)
+  evt.vault = vaultId
+  evt.chainId = getChainIdFromNetwork(dataSource.network())
+  evt.module = event.params.module
+  evt.authorized = event.params.authorized
+  evt.timestamp = event.block.timestamp
+  evt.blockNumber = event.block.number
+  evt.txHash = event.transaction.hash
+  evt.save()
+}
+
+// SG-11 — DeadDepositSeeded(uint256 assets, uint256 shares, address indexed dead)
+export function handleDeadDepositSeeded(event: DeadDepositSeededEvent): void {
+  let vaultId = getVaultId(event.address)
+  let vault = Vault.load(vaultId)
+  if (vault == null) return
+
+  let id = createEventId(event.transaction.hash, event.logIndex)
+  let evt = new DeadDepositEvent(id)
+  evt.vault = vaultId
+  evt.chainId = getChainIdFromNetwork(dataSource.network())
+  evt.assets = event.params.assets
+  evt.shares = event.params.shares
+  evt.dead = event.params.dead
+  evt.timestamp = event.block.timestamp
+  evt.blockNumber = event.block.number
+  evt.txHash = event.transaction.hash
+  evt.save()
 }
 
 export function handleModulesBatchSet(event: ModulesBatchSetEvent): void {
@@ -2059,6 +2142,7 @@ export function handleAllPaused(event: AllPausedEvent): void {
     vault.depositsEnabled = false
     vault.withdrawalsEnabled = false
     vault.status = "PAUSED"
+    openPause(vault, "ALL", event, false)
     vault.updatedAt = event.block.timestamp
     vault.save()
   }
@@ -2071,6 +2155,7 @@ export function handleAllUnpaused(event: AllUnpausedEvent): void {
     vault.depositsEnabled = true
     vault.withdrawalsEnabled = true
     vault.status = "ACTIVE"
+    closePause(vault, "ALL", event)
     vault.updatedAt = event.block.timestamp
     vault.save()
   }
@@ -2081,6 +2166,7 @@ export function handleDepositsPaused(event: DepositsPausedEvent): void {
   let vault = Vault.load(vaultId)
   if (vault != null) {
     vault.depositsEnabled = false
+    openPause(vault, "DEPOSITS", event, false)
     vault.updatedAt = event.block.timestamp
     vault.save()
   }
@@ -2091,6 +2177,7 @@ export function handleDepositsUnpaused(event: DepositsUnpausedEvent): void {
   let vault = Vault.load(vaultId)
   if (vault != null) {
     vault.depositsEnabled = true
+    closePause(vault, "DEPOSITS", event)
     vault.updatedAt = event.block.timestamp
     vault.save()
   }
@@ -2101,6 +2188,7 @@ export function handleWithdrawalsPaused(event: WithdrawalsPausedEvent): void {
   let vault = Vault.load(vaultId)
   if (vault != null) {
     vault.withdrawalsEnabled = false
+    openPause(vault, "WITHDRAWALS", event, false)
     vault.updatedAt = event.block.timestamp
     vault.save()
   }
@@ -2111,6 +2199,7 @@ export function handleWithdrawalsUnpaused(event: WithdrawalsUnpausedEvent): void
   let vault = Vault.load(vaultId)
   if (vault != null) {
     vault.withdrawalsEnabled = true
+    closePause(vault, "WITHDRAWALS", event)
     vault.updatedAt = event.block.timestamp
     vault.save()
   }
@@ -2137,6 +2226,7 @@ export function handleGuardianPauseActivated(event: GuardianPauseActivatedEvent)
   vault.depositsEnabled = false
   vault.withdrawalsEnabled = false
   vault.status = "PAUSED"
+  openPause(vault, "ALL", event, true)
   vault.updatedAt = event.block.timestamp
   vault.save()
 }
@@ -2603,6 +2693,7 @@ export function handleStrategyHarvested(event: StrategyHarvestedEvent): void {
   harvest.pnl = event.params.pnl
   harvest.realized = event.params.realized
   harvest.success = true
+  setHarvestGas(harvest, event)
   harvest.timestamp = event.block.timestamp
   harvest.blockNumber = event.block.number
   harvest.txHash = event.transaction.hash
@@ -2620,6 +2711,15 @@ export function handleStrategyHarvested(event: StrategyHarvestedEvent): void {
     strategy.updatedAt = event.block.timestamp
     strategy.save()
   }
+
+  // SG-8 — per-strategy daily harvest history
+  let hRouter = StrategyRouter.load(routerId)
+  if (hRouter !== null && hRouter.vault !== null) {
+    let hVault = Vault.load(hRouter.vault!)
+    if (hVault != null) {
+      recordStrategyHarvest(hVault, event.params.strat, event.block.timestamp, event.params.pnl, event.params.realized, true)
+    }
+  }
 }
 
 export function handleStrategyHarvestFailed(event: StrategyHarvestFailedEvent): void {
@@ -2634,6 +2734,7 @@ export function handleStrategyHarvestFailed(event: StrategyHarvestFailedEvent): 
   harvest.realized = BigInt.fromI32(0)
   harvest.success = false
   harvest.failureReason = truncateBytes(event.params.reason, MAX_REASON_BYTES)
+  setHarvestGas(harvest, event)
   harvest.timestamp = event.block.timestamp
   harvest.blockNumber = event.block.number
   harvest.txHash = event.transaction.hash
@@ -2649,6 +2750,15 @@ export function handleStrategyHarvestFailed(event: StrategyHarvestFailedEvent): 
     strategy.totalHarvestFailCount = strategy.totalHarvestFailCount.plus(BigInt.fromI32(1))
     strategy.updatedAt = event.block.timestamp
     strategy.save()
+  }
+
+  // SG-8 — per-strategy daily harvest history
+  let hRouter = StrategyRouter.load(routerId)
+  if (hRouter !== null && hRouter.vault !== null) {
+    let hVault = Vault.load(hRouter.vault!)
+    if (hVault != null) {
+      recordStrategyHarvest(hVault, event.params.strat, event.block.timestamp, ZERO_BI, ZERO_BI, false)
+    }
   }
 }
 
@@ -2928,6 +3038,12 @@ export function handleRebalanced(event: RebalancedEvent): void {
   evt.blockNumber = event.block.number
   evt.txHash = event.transaction.hash
   evt.save()
+
+  // SG-8 — per-strategy daily routing flow
+  let rbVault = Vault.load(vaultId)
+  if (rbVault != null) {
+    recordStrategyRebalance(rbVault, event.params.from, event.params.to, event.block.timestamp, event.params.amount)
+  }
 }
 
 export function handleEmergencyDrainStarted(event: EmergencyDrainStartedEvent): void {
@@ -3205,8 +3321,11 @@ export function handleUpkeepPerformed(event: UpkeepPerformedEvent): void {
   action.chainId = getChainIdFromNetwork(dataSource.network())
   action.upkeep = event.address
   action.op = event.params.op
+  action.opType = mapVaultUpkeepOp(event.params.op)
+  action.upkeepKind = "VAULT"
   action.arg = event.params.arg
   action.success = event.params.success
+  setUpkeepGas(action, event)
 
   action.timestamp = event.block.timestamp
   action.blockNumber = event.block.number
@@ -3292,6 +3411,26 @@ export function handleVaultOracleOverrideSet(event: VaultOracleOverrideSetEvent)
   evt.vault = event.params.vault
   evt.oracle = event.params.oracle
   evt.maxStaleness = event.params.maxStaleness
+
+  evt.timestamp = event.block.timestamp
+  evt.blockNumber = event.block.number
+  evt.txHash = event.transaction.hash
+
+  evt.save()
+}
+
+// SG-12 — VaultOverrideCleared(address indexed vault, ParamType paramType)
+export function handleVaultOverrideCleared(event: VaultOverrideClearedEvent): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let evt = new OracleRegistryEvent(id)
+
+  evt.chainId = getChainIdFromNetwork(dataSource.network())
+  evt.type = "OVERRIDE_CLEARED"
+  evt.asset = null
+  evt.vault = event.params.vault
+  evt.oracle = Address.zero()
+  evt.maxStaleness = ZERO_BI
+  evt.paramType = event.params.paramType
 
   evt.timestamp = event.block.timestamp
   evt.blockNumber = event.block.number
@@ -3728,6 +3867,7 @@ export function handlePeripheryUpkeepPerformed(event: PeripheryUpkeepPerformedEv
   } else {
     evt.op = "UNKNOWN"
   }
+  evt.opType = mapPeripheryUpkeepOp(opVal)
 
   evt.timestamp = event.block.timestamp
   evt.blockNumber = event.block.number
@@ -3748,8 +3888,11 @@ export function handleStrategyUpkeepPerformed(event: StrategyUpkeepPerformedEven
   action.chainId = chainId
   action.upkeep = event.address
   action.op = event.params.op
+  action.opType = mapStrategyUpkeepOp(event.params.op)
+  action.upkeepKind = "STRATEGY"
   action.arg = ZERO_BI
   action.success = true
+  setUpkeepGas(action, event)
   action.timestamp = event.block.timestamp
   action.blockNumber = event.block.number
   action.txHash = event.transaction.hash
@@ -3764,8 +3907,11 @@ export function handleStrategyUpkeepErrored(event: StrategyUpkeepErroredEvent): 
   action.chainId = chainId
   action.upkeep = event.address
   action.op = event.params.op
+  action.opType = mapStrategyUpkeepOp(event.params.op)
+  action.upkeepKind = "STRATEGY"
   action.arg = ZERO_BI
   action.success = false
+  setUpkeepGas(action, event)
   action.timestamp = event.block.timestamp
   action.blockNumber = event.block.number
   action.txHash = event.transaction.hash
@@ -3818,8 +3964,11 @@ export function handleFeeDistributionTriggered(event: DistributionTriggeredEvent
   action.chainId = chainId
   action.upkeep = event.address
   action.op = 0
+  action.opType = "FEE_DISTRIBUTION"
+  action.upkeepKind = "FEE_COLLECTOR"
   action.arg = ZERO_BI
   action.success = true
+  setUpkeepGas(action, event)
   action.timestamp = event.block.timestamp
   action.blockNumber = event.block.number
   action.txHash = event.transaction.hash
@@ -3841,8 +3990,11 @@ export function handleFeeDistributionFailed(event: DistributionFailedEvent): voi
   action.chainId = chainId
   action.upkeep = event.address
   action.op = 0
+  action.opType = "FEE_DISTRIBUTION"
+  action.upkeepKind = "FEE_COLLECTOR"
   action.arg = ZERO_BI
   action.success = false
+  setUpkeepGas(action, event)
   action.timestamp = event.block.timestamp
   action.blockNumber = event.block.number
   action.txHash = event.transaction.hash
@@ -3892,6 +4044,7 @@ export function handleAdapterAdded(event: AdapterAddedEvent): void {
   binding.enabled = true
   binding.updatedAtBlock = event.block.number
   binding.save()
+  snapshotAdapterHealth(binding, event.block)
 }
 
 export function handleAdapterToggled(event: AdapterToggledEvent): void {
@@ -3900,6 +4053,7 @@ export function handleAdapterToggled(event: AdapterToggledEvent): void {
   binding.enabled = event.params.enabled
   binding.updatedAtBlock = event.block.number
   binding.save()
+  snapshotAdapterHealth(binding, event.block)
 }
 
 export function handleAdapterActivated(event: AdapterActivatedEvent): void {
@@ -3908,6 +4062,7 @@ export function handleAdapterActivated(event: AdapterActivatedEvent): void {
   binding.activatedAt = event.params.activatedAt
   binding.updatedAtBlock = event.block.number
   binding.save()
+  snapshotAdapterHealth(binding, event.block)
 }
 
 export function handleAdapterAutoQuarantined(event: AdapterAutoQuarantinedEvent): void {
@@ -3917,6 +4072,7 @@ export function handleAdapterAutoQuarantined(event: AdapterAutoQuarantinedEvent)
   binding.quarantined = true
   binding.updatedAtBlock = event.block.number
   binding.save()
+  snapshotAdapterHealth(binding, event.block)
 }
 
 export function handleAdapterFlagged(event: AdapterFlaggedEvent): void {
@@ -3925,6 +4081,7 @@ export function handleAdapterFlagged(event: AdapterFlaggedEvent): void {
   binding.flagged = event.params.flagged
   binding.updatedAtBlock = event.block.number
   binding.save()
+  snapshotAdapterHealth(binding, event.block)
 }
 
 // =============================================================================
@@ -4591,6 +4748,11 @@ export function handleAdapterHarvestFailed(event: AdapterHarvestFailedEvent): vo
   let chainId = getChainIdFromNetwork(dataSource.network())
   let sdId = strategyDeploymentId(event.address, chainId)
   saveAdapterFailure(sdId, chainId, event, event.params.adapter, "HARVEST", null, event.params.reason)
+
+  // SG-13 — daily adapter health
+  let abId = event.address.toHexString().toLowerCase() + "-" + event.params.adapter.toHexString().toLowerCase() + "-" + chainId.toString()
+  let ab = AdapterBinding.load(abId)
+  if (ab !== null) recordAdapterFailure(ab, event.block)
 }
 
 export function handleAdapterFundsStranded(event: AdapterFundsStrandedEvent): void {
@@ -4622,6 +4784,11 @@ export function handleScoringComputed(event: ScoringComputedEvent): void {
   snap.updatedAtBlock = event.block.number
   snap.updatedAtTimestamp = event.block.timestamp
   snap.save()
+
+  // SG-13 — daily adapter health APY telemetry
+  let abId = event.address.toHexString().toLowerCase() + "-" + event.params.adapter.toHexString().toLowerCase() + "-" + chainId.toString()
+  let ab = AdapterBinding.load(abId)
+  if (ab !== null) recordAdapterApy(ab, event.block, event.params.apyBps, event.params.incentiveBps)
 }
 
 export function handleDeployIdleExecuted(event: DeployIdleExecutedEvent): void {

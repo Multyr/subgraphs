@@ -43,6 +43,40 @@ enum PriceStatus {
   MISSING         # No price source available - USD values are 0
 }
 
+# Which automation contract an UpkeepAction came from (SG-3)
+enum UpkeepKind {
+  VAULT           # multyr-core VaultUpkeep
+  STRATEGY        # multyr-strategies LendingStrategyUpkeep / MultiplyStrategyUpkeep
+  PERIPHERY       # PeripheryUpkeepAdapter (rewards pipeline)
+  FEE_COLLECTOR   # FeeCollectorUpkeep
+}
+
+# Decoded on-chain upkeep operation (SG-3).
+# VaultUpkeep.Op        (multyr-core/src/automation/VaultUpkeep.sol)
+# LendingStrategyUpkeep OP_* constants (multyr-strategies)
+# PeripheryUpkeepAdapter PeripheryOp
+enum UpkeepOpType {
+  NONE
+  EPOCH_CLOSE
+  EPOCH_FUND
+  CRYSTALLIZE
+  REBALANCE
+  DEPLOY
+  REALIZE
+  RECONCILE
+  STRATEGY_REBALANCE
+  HARVEST
+  POKE_APY
+  DEPLOY_IDLE
+  PREPARE_REBALANCE
+  EXECUTE_REBALANCE_STEP
+  PERIPHERY_SPLIT
+  PERIPHERY_REDEEM
+  PERIPHERY_FUND
+  FEE_DISTRIBUTION
+  UNKNOWN
+}
+
 # =============================================================================
 # CORE ENTITIES
 # =============================================================================
@@ -122,6 +156,12 @@ type Vault @entity {
   depositsEnabled: Boolean!
   withdrawalsEnabled: Boolean!
 
+  # SG-9 — pointer to the currently-open VaultPauseEvent per scope (null = not paused)
+  activeAllPause: String
+  activeDepositsPause: String
+  activeWithdrawalsPause: String
+  pauseEvents: [VaultPauseEvent!]! @derivedFrom(field: "vault")
+
   # Components (addresses)
   bufferManager: Bytes
   strategyRouter: Bytes
@@ -190,6 +230,36 @@ type VaultDayData @entity {
   uniqueUsers: Int!
 }
 
+# Vault hourly snapshot (SG-7). ID: {vaultId}-{hourId}   hourId = timestamp / 3600
+# Retention: keep ~90 days of hourly; daily is kept indefinitely (see docs/DEPLOYMENT.md).
+type VaultHourData @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  hourId: Int!
+  periodStartUnix: Int!
+
+  totalAssets: BigInt!
+  totalSupply: BigInt!
+  sharePrice: BigInt!
+  tvlUsd: BigDecimal!
+  assetPriceUsd: BigDecimal!
+
+  depositsAssets: BigInt!
+  depositsUsd: BigDecimal!
+  withdrawalsAssets: BigInt!
+  withdrawalsUsd: BigDecimal!
+  netFlowAssets: BigInt!
+  netFlowUsd: BigDecimal!
+
+  depositCount: Int!
+  withdrawCount: Int!
+  uniqueUsers: Int!
+
+  hourlyReturn: BigDecimal!
+}
+
 # =============================================================================
 # USER POSITION ENTITIES
 # =============================================================================
@@ -237,6 +307,10 @@ type UserVaultPosition @entity {
   # Transaction count
   depositCount: Int!
   withdrawCount: Int!
+
+  # SG-16 — FIFO lot bookkeeping (decoupled from depositCount)
+  lotCounter: Int!            # next free lot index; monotonic, never reused
+  firstActiveLotIndex: Int!   # compaction cursor — lots below this are fully consumed
 
   # FIFO lots for accurate cost basis
   lots: [PositionLot!]! @derivedFrom(field: "position")
@@ -411,6 +485,38 @@ type VaultStrategy @entity {
   updatedAt: BigInt!
 }
 
+# Per-strategy per-day allocation + harvest history (SG-8).
+# ID: {vaultId}-{strategyAddress}-{dayId}   dayId = timestamp / 86400
+type StrategyDayData @entity {
+  id: ID!
+  dayId: Int!
+  vault: Vault!
+  strategy: Bytes!
+  vaultStrategy: VaultStrategy
+  chainId: Int!
+  periodStartUnix: Int!
+
+  # Allocation snapshot (last value seen in the day)
+  totalAssets: BigInt!
+  totalAssetsUsd: BigDecimal!
+  weightBps: Int!
+  allocationPct: BigDecimal!    # share of vault NAV, 0..100
+
+  # Harvest activity (summed over the day)
+  harvestCount: Int!
+  harvestPnl: BigInt!
+  harvestRealized: BigInt!
+  harvestFailures: Int!
+
+  # Routing flow (summed over the day)
+  routedIn: BigInt!
+  routedOut: BigInt!
+  idleCash: BigInt!             # cashAfter from the last routing event in the day
+
+  enabled: Boolean!
+  quarantined: Boolean!
+}
+
 # =============================================================================
 # PRICING ENTITIES
 # =============================================================================
@@ -427,11 +533,16 @@ type TokenPrice @entity {
   source: String!
   status: PriceStatus!
 
+  feed: ChainlinkFeed             # SG-4 — resolved feed (null when status = MISSING)
+  stalenessSeconds: BigInt        # SG-4 — age of the underlying feed answer
+
   updatedAt: BigInt!
   updatedAtBlock: BigInt!
+
+  dayData: [TokenPriceDayData!]! @derivedFrom(field: "tokenPrice")
 }
 
-# Chainlink oracle configuration. ID: tokenAddress-chainId
+# Chainlink oracle configuration / registry. ID: tokenAddress-chainId  (SG-4)
 type ChainlinkFeed @entity {
   id: ID!
   token: Bytes!
@@ -440,6 +551,24 @@ type ChainlinkFeed @entity {
   decimals: Int!
   description: String!
   isActive: Boolean!
+  updatedAt: BigInt!
+}
+
+# Historicised token price (SG-14). ID: {token}-{chainId}-{dayId}
+type TokenPriceDayData @entity {
+  id: ID!
+  dayId: Int!
+  token: Bytes!
+  chainId: Int!
+  tokenPrice: TokenPrice!
+
+  priceUsd: BigDecimal!          # last price seen in the day
+  status: PriceStatus!
+  source: String!
+
+  samples: Int!
+  minPriceUsd: BigDecimal!
+  maxPriceUsd: BigDecimal!
 }
 
 # =============================================================================
@@ -471,9 +600,17 @@ type UpkeepAction @entity {
   id: ID!
   chainId: Int!
   upkeep: Bytes!
-  op: Int!
+  op: Int!                    # raw on-chain enum value (kept for back-compat)
+  opType: UpkeepOpType!       # decoded (SG-3)
+  upkeepKind: UpkeepKind!     # which automation contract (SG-3)
   arg: BigInt!
   success: Boolean!
+
+  # Automation cost (SG-2) — populated from event.receipt (requires `receipt: true`)
+  gasUsed: BigInt
+  gasPrice: BigInt
+  txFeeWei: BigInt            # gasUsed * gasPrice, precomputed
+
   timestamp: BigInt!
   blockNumber: BigInt!
   txHash: Bytes!
@@ -855,6 +992,36 @@ type WarmAdapterEvent @entity {
   txHash: Bytes!
 }
 
+# Pause scope for VaultPauseEvent (SG-9)
+enum PauseScope {
+  ALL
+  DEPOSITS
+  WITHDRAWALS
+}
+
+# Vault pause history with duration (SG-9). ID: {vaultId}-{scope}-{pausedAtTxHash}
+type VaultPauseEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+  scope: PauseScope!
+
+  pausedAt: BigInt!
+  pausedAtBlock: BigInt!
+  pausedTxHash: Bytes!
+  pausedBy: Bytes                # tx sender
+
+  unpausedAt: BigInt            # null while still paused
+  unpausedAtBlock: BigInt
+  unpausedTxHash: Bytes
+  unpausedBy: Bytes
+
+  durationSeconds: BigInt        # set on unpause
+  active: Boolean!
+  guardianTriggered: Boolean!    # correlate with GuardianPauseActivated
+  anomalous: Boolean!            # unpause arrived with no open record
+}
+
 # Guardian pause event. ID: txHash-logIndex
 type GuardianPauseEvent @entity {
   id: ID!
@@ -892,6 +1059,38 @@ type OwnershipEvent @entity {
   previousOwner: Bytes!
   newOwner: Bytes!
   isPending: Boolean!  # true for initiated, false for completed
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Module authorization audit trail (Diamond-lite routing). ID: txHash-logIndex
+# Events.sol: ModuleAuthorized(address indexed module, bool authorized) — SG-10
+type ModuleAuthorizationEvent @entity(immutable: true) {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  module: Bytes!
+  authorized: Boolean!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Inflation-attack hardening seed at vault deploy. ID: txHash-logIndex
+# Events.sol: DeadDepositSeeded(uint256 assets, uint256 shares, address indexed dead) — SG-11
+# Expected exactly once per vault; its absence is itself a finding.
+type DeadDepositEvent @entity(immutable: true) {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  assets: BigInt!
+  shares: BigInt!
+  dead: Bytes!
 
   timestamp: BigInt!
   blockNumber: BigInt!
@@ -964,6 +1163,11 @@ type StrategyHarvestEvent @entity {
   realized: BigInt!
   success: Boolean!
   failureReason: Bytes  # if failed
+
+  # Automation cost (SG-2) — populated from event.receipt (requires `receipt: true`)
+  gasUsed: BigInt
+  gasPrice: BigInt
+  txFeeWei: BigInt   # gasUsed * gasPrice, precomputed
 
   timestamp: BigInt!
   blockNumber: BigInt!
@@ -1205,6 +1409,7 @@ enum OracleRegistryEventType {
   ASSET_CONFIG_SET    # AssetOracleConfigSet(asset, oracle, maxStaleness)
   VAULT_OVERRIDE_SET  # VaultOracleOverrideSet(vault, oracle, maxStaleness)
   DEFAULT_CONFIG_SET  # DefaultOracleConfigSet(oracle, maxStaleness)
+  OVERRIDE_CLEARED    # VaultOverrideCleared(vault, paramType) — SG-12
 }
 
 # Oracle registry configuration event. ID: txHash-logIndex
@@ -1214,9 +1419,10 @@ type OracleRegistryEvent @entity {
 
   type: OracleRegistryEventType!
   asset: Bytes           # for ASSET_CONFIG_SET
-  vault: Bytes           # for VAULT_OVERRIDE_SET
-  oracle: Bytes!
-  maxStaleness: BigInt!
+  vault: Bytes           # for VAULT_OVERRIDE_SET / OVERRIDE_CLEARED
+  oracle: Bytes!         # zero address for OVERRIDE_CLEARED
+  maxStaleness: BigInt!  # zero for OVERRIDE_CLEARED
+  paramType: Int         # for OVERRIDE_CLEARED — GlobalConfig.ParamType enum value
 
   timestamp: BigInt!
   blockNumber: BigInt!
@@ -1501,7 +1707,8 @@ type PeripheryUpkeepEvent @entity {
   id: ID!
   chainId: Int!
 
-  op: String!    # "SPLIT", "REDEEM", "FUND"
+  op: String!             # "SPLIT", "REDEEM", "FUND" (legacy free string)
+  opType: UpkeepOpType!   # decoded (SG-3)
 
   timestamp: BigInt!
   blockNumber: BigInt!
@@ -1756,6 +1963,27 @@ type StrategyHealthFlag @entity {
   lastDegradedObservedAtTimestamp: BigInt
   updatedAtBlock: BigInt!
   updatedAtTimestamp: BigInt!
+}
+
+# Daily adapter-health snapshot (SG-13). ID: "{vaultId}-{adapterAddress}-{dayId}"
+# Captures what the event stream can see; risk-score inputs are RPC-only and are
+# covered by the backend snapshot layer (P-1).
+type AdapterHealthSnapshot @entity {
+  id: ID!
+  dayId: Int!
+  vault: Vault!
+  adapter: Bytes!
+  chainId: Int!
+
+  enabled: Boolean!
+  quarantined: Boolean!
+  flagged: Boolean!
+  consecutiveFailures: Int!
+  failuresToday: Int!
+  lastHarvestAt: BigInt
+  apyBps: Int
+  incentiveApyBps: Int
+  totalAssets: BigInt
 }
 
 # Adapter binding within a strategy. ID: "{strategyAddress}-{adapterAddress}-{chainId}"

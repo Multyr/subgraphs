@@ -1,4 +1,12 @@
 node_modules/
+node_modules
+*/node_modules
 build/
 generated/
 .env
+
+# matchstick / graph test local artifacts
+*/tests/.bin/
+*/tests/.latest.json
+tests/.bin/
+tests/.latest.json

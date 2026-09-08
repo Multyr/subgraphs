@@ -1,16 +1,32 @@
 {
-  "strategy": "0x30f0765bE73ace2FA29B6BD6BaF190F8c0ba6650",
-  "strategyUpkeep": "0xD2984A45CD7d2126897c86F3c2E68306168E3c68",
-  "aaveLendingAdapter": "0x829103E61863Ee104B80002C12E29091D1056074",
-  "morphoLendingAdapter": "0xd4a6265e5aFe701E7bca48B5f36dDAcdaef918e8",
-  "cometLendingAdapter": "0xA3Cf1FEf3D9864aE193064CecD55a48a079A2496",
-  "eulerLendingAdapter": "0x971D505D162c8c0c25a055dd10f7425AC4dc2345",
-  "dolomiteLendingAdapter": "0xf29B63BfB6dE3c85eBC5afe5C8E820ca092D0c89",
-  "fluidLendingAdapter": "0xf56Fc469e79a7F42b5291065Fd8081C9C857AB76",
-  "venusLendingAdapter": "0xE3E8e280b4A75805c7189d48De65551b6F05340d",
-  "aaveRateProvider": "0x1C5e28A4D8C909dC38129db139Dc03753a64e0f5",
-  "dolomiteRateProvider": "0xd51825E3f9e7A6732c07b524baA94cbF6E134F6D",
-  "protocolRegistry": "0x79905394B13bcc3c7C471a96786B79b7AA53D59B",
-  "deployBlock": 446479922,
-  "version": "v9"
+  "_source": "multyr-strategies/deployments/shadow/forktest/addresses.json (DeployUsdcLendingStrategy.s.sol)",
+  "_note": "Pre-audit shadow deployment (USDC multi-lending strategy). VERIFY blockNumber against Arbiscan before production deploy.",
+  "strategy": "0x4b00A5e655aB2d70F3ebFA741903FC760F34A411",
+  "strategyUpkeep": "0x05bBe5Aeca8942C9a87AF0c299976DfEDB0aF2Af",
+
+  "aaveLendingAdapter": "0xc02e8EC94815606Dc7D9dF0F839C8BeE8EC8bA34",
+  "morphoLendingAdapter": "0x2721617d6f385e80272E85ef4F98C7B5Cd5AA333",
+  "cometLendingAdapter": "0x381670cd3f2F17117D0eC6246204C08f487B9833",
+  "eulerLendingAdapter": "0xf61825b80B55A64C64bF6DFfC0e52F540Db84067",
+  "dolomiteLendingAdapter": "0x1BcdB8E795C299d6762282bB77F1B787b378601C",
+  "fluidLendingAdapter": "0x54fb900BB07c819052e278227dB9f18df412fA36",
+  "venusLendingAdapter": "0xEFcEEA86e975D4db79413063751F18397203E5D0",
+
+  "aaveRateProvider": "0x3C509621eBd5246dac3723AE5b7E19d8925A4Ac4",
+  "dolomiteRateProvider": "0x1E3eEEc8762BEFC44e867F05cC406DF053888532",
+
+  "protocolRegistry": "0xad1452715dddC6724C68DBf8Ea2Ecd5C9fA2347c",
+  "adapterFactory": "0xB2A228DA35F791B76271a92D784e15FE3f6cA6f7",
+  "adapterOpsModule": "0x265295B00134A65681fAcd32cBC817DFaaf4CF86",
+  "allocCalcModule": "0x6D786C958df7Bd901892226440526bD8392BAF3D",
+  "paramsModule": "0xf17a920C8bA47D031B814757829461F41EBe27b8",
+  "rebalanceGateModule": "0x529Ede4C1FB507955C8C6d76Ef498Dfb4faCB196",
+  "rebalancePlanModule": "0x47c490a535609C11B1e601803F92D02a50e14613",
+  "scoringModule": "0xc69847914Ed367F41d87A3e5a7aFB961A4f02BF9",
+  "settingsModule": "0x2844A0fF30191B450563373d89108194Ee92C948",
+  "bootstrapper": "0x505aAa1d80801900a8e54C4d32392F4dC8a310d7",
+
+  "deployBlock": 25892599,
+  "chainId": 42161,
+  "version": "shadow-2026-08"
 }

@@ -9,9 +9,10 @@ dataSources:
     name: VaultFactory
     network: arbitrum-one
     source:
-      address: "0x046aCF27Fa5A3Df049D4E3868af68D1D0CFAa733"
+      # Shadow deployment (multyr-core/broadcast/core-addresses.json)
+      address: "0xC3BbF52810D06a91617FeeA1dd013b10C2373f34"
       abi: VaultFactory
-      startBlock: 446479922
+      startBlock: 25804282
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -21,6 +22,8 @@ dataSources:
         - VaultFactory
         - Vault
         - TokenPrice
+        - TokenPriceDayData
+        - ChainlinkFeed
       abis:
         - name: VaultFactory
           file: ./abis/VaultFactory.json
@@ -48,9 +51,10 @@ dataSources:
     name: VaultUpkeep
     network: arbitrum-one
     source:
-      address: "0x35c4F18511200186e2827dCca50FbF62Ded446fB"
+      # NOT deployed in this shadow release — dormant (dead address + far-future block)
+      address: "0x0000000000000000000000000000000000000001"
       abi: VaultUpkeep
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -63,6 +67,7 @@ dataSources:
       eventHandlers:
         - event: UpkeepPerformed(uint8,uint256,bool)
           handler: handleUpkeepPerformed
+          receipt: true
         - event: RealizeForQueueFailed(uint256,bytes)
           handler: handleRealizeForQueueFailed
         - event: DeployRealizeCooldownSet(uint64)
@@ -77,9 +82,10 @@ dataSources:
     name: GlobalConfig
     network: arbitrum-one
     source:
-      address: "0xD5a607d6c043f2e901268bB868266A5dDbA01Dd9"
+      # Shadow deployment (multyr-core/broadcast/core-addresses.json)
+      address: "0xf34538f8939322798261dA245d5BB6a7DB9361cE"
       abi: GlobalConfig
-      startBlock: 446479922
+      startBlock: 25804282
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -96,6 +102,8 @@ dataSources:
           handler: handleAssetOracleConfigSet
         - event: VaultOracleOverrideSet(indexed address,indexed address,uint256)
           handler: handleVaultOracleOverrideSet
+        - event: VaultOverrideCleared(indexed address,uint8)
+          handler: handleVaultOverrideCleared
       file: ./src/mappings.ts
 
   # =========================================================================
@@ -111,9 +119,10 @@ dataSources:
     name: OpsCollector
     network: arbitrum-one
     source:
-      address: "0x78Db3575A3477adfEd19F74142b7ed1a592f80D1"
+      # Periphery rewards pipeline NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: OpsCollector
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -140,9 +149,10 @@ dataSources:
     name: FeeDistributor
     network: arbitrum-one
     source:
-      address: "0x855018a8BCe730ed528b426E78e9A5b28fAb457E"
+      # Periphery rewards pipeline NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: FeeDistributor
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -177,9 +187,10 @@ dataSources:
     name: EpochPayout
     network: arbitrum-one
     source:
-      address: "0x15F5619256db081c1694f6966e25d1B234D2D897"
+      # Periphery rewards pipeline NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: EpochPayout
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -201,9 +212,10 @@ dataSources:
     name: ReferralBinding
     network: arbitrum-one
     source:
-      address: "0xBCD9CD0E11fe5B6740403C7ce37Af22FB9E77A6E"
+      # Periphery rewards pipeline NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: ReferralBinding
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -225,9 +237,10 @@ dataSources:
     name: PartnerRegistry
     network: arbitrum-one
     source:
-      address: "0x3112a409159E4a72adFC7197daB24B38c0Cac2ac"
+      # Periphery rewards pipeline NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: PartnerRegistry
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -250,9 +263,10 @@ dataSources:
     name: DepositRouter
     network: arbitrum-one
     source:
-      address: "0x592C234d516463215e8Cf01C16162aaa8496b941"
+      # Periphery rewards pipeline NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: DepositRouter
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -296,9 +310,10 @@ dataSources:
     name: StrategyUpkeep
     network: arbitrum-one
     source:
-      address: "0xD2984A45CD7d2126897c86F3c2E68306168E3c68"
+      # Shadow deployment (multyr-strategies/deployments/shadow/forktest/addresses.json)
+      address: "0x05bBe5Aeca8942C9a87AF0c299976DfEDB0aF2Af"
       abi: StrategyUpkeep
-      startBlock: 446479922
+      startBlock: 25892599
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -313,8 +328,10 @@ dataSources:
       eventHandlers:
         - event: UpkeepPerformed(indexed uint8,indexed address,uint256)
           handler: handleStrategyUpkeepPerformed
+          receipt: true
         - event: UpkeepErrored(indexed uint8,indexed address,bytes)
           handler: handleStrategyUpkeepErrored
+          receipt: true
         - event: StrategyAdded(indexed address)
           handler: handleUpkeepStrategyAdded
         - event: StrategyRemoved(indexed address)
@@ -327,9 +344,10 @@ dataSources:
     name: FeeCollectorUpkeep
     network: arbitrum-one
     source:
-      address: "0x924C814a5Befc4B0171365877d5c0a1faAa8409b"
+      # NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: FeeCollectorUpkeep
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -343,8 +361,10 @@ dataSources:
       eventHandlers:
         - event: DistributionTriggered(indexed address,uint256)
           handler: handleFeeDistributionTriggered
+          receipt: true
         - event: DistributionFailed(indexed address,bytes)
           handler: handleFeeDistributionFailed
+          receipt: true
       file: ./src/mappings.ts
 
   # IncentivesEngine — Reconcile lifecycle (address updated post-deploy)
@@ -354,7 +374,7 @@ dataSources:
     source:
       address: "0x0000000000000000000000000000000000000001"
       abi: IncentivesEngine
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -394,6 +414,7 @@ templates:
       entities:
         - Vault
         - VaultDayData
+        - VaultHourData
         - UserVaultPosition
         - UserPositionDayData
         - PositionLot
@@ -401,10 +422,13 @@ templates:
         - ClaimRequest
         - User
         - TokenPrice
+        - TokenPriceDayData
+        - ChainlinkFeed
         - FeeEvent
         - Crystallization
         - PerfFeeMint
         - StrategyRoute
+        - StrategyDayData
         - VaultRealization
         - ReserveRestore
         - EpochEvent
@@ -416,6 +440,9 @@ templates:
         - ComponentTimelockEvent
         - VaultStrategy
         - ForceWithdrawEvent
+        - ModuleAuthorizationEvent
+        - DeadDepositEvent
+        - VaultPauseEvent
       abis:
         - name: Vault
           file: ./abis/Vault.json
@@ -621,6 +648,10 @@ templates:
           handler: handleSelectorRegistrySet
         - event: ModuleSet(indexed bytes4,indexed address,uint8)
           handler: handleModuleSet
+        - event: ModuleAuthorized(indexed address,bool)
+          handler: handleModuleAuthorized
+        - event: DeadDepositSeeded(uint256,uint256,indexed address)
+          handler: handleDeadDepositSeeded
         - event: ModulesBatchSet(uint256)
           handler: handleModulesBatchSet
         - event: RoleSet(indexed bytes4,uint8)
@@ -750,6 +781,7 @@ templates:
       language: wasm/assemblyscript
       entities:
         - AdapterBinding
+        - AdapterHealthSnapshot
       abis:
         - name: Strategy
           file: ./abis/Strategy.json
@@ -816,6 +848,7 @@ templates:
       entities:
         - VaultStrategy
         - StrategyRoute
+        - StrategyDayData
       abis:
         - name: StrategyRouter
           file: ./abis/StrategyRouter.json
@@ -853,8 +886,10 @@ templates:
         # Harvest telemetry events (Pendle-style)
         - event: StrategyHarvested(indexed address,int256,uint256)
           handler: handleStrategyHarvested
+          receipt: true
         - event: StrategyHarvestFailed(indexed address,bytes)
           handler: handleStrategyHarvestFailed
+          receipt: true
         - event: HarvestBatchSummary(uint256,int256,uint256)
           handler: handleHarvestBatchSummary
       file: ./src/mappings.ts

@@ -3,216 +3,187 @@ import {
   assert,
   clearStore,
   newMockEvent,
-  createMockedFunction
+  createMockedFunction,
+  dataSourceMock,
+  beforeEach
 } from "matchstick-as/assembly/index"
 import { Address, BigInt, ethereum } from "@graphprotocol/graph-ts"
 
 import { handleVaultCreated, handleDeposit, handleWithdraw, handleTransfer } from "../src/mappings"
-import { VaultCreated } from "../../generated/VaultFactory/VaultFactory"
-import { Deposit, Withdraw, Transfer } from "../../generated/templates/VaultTemplate/Vault"
+import { VaultCreated } from "../generated/VaultFactory/VaultFactory"
+import { Deposit, Withdraw, Transfer } from "../generated/templates/VaultTemplate/Vault"
 
-function createVaultCreatedEvent(
-  factory: Address,
-  vaultId: BigInt,
-  vault: Address,
-  asset: Address,
-  name: string,
-  symbol: string,
-  owner: Address,
-  treasury: Address
-): VaultCreated {
-  const ev = changetype<VaultCreated>(newMockEvent())
-  ev.address = factory
+// ---------------------------------------------------------------------------
+// fixtures
+// ---------------------------------------------------------------------------
+
+const FACTORY = Address.fromString("0x1000000000000000000000000000000000000001")
+const VAULT = Address.fromString("0x2000000000000000000000000000000000000002")
+const ASSET = Address.fromString("0x3000000000000000000000000000000000000003")
+const OWNER = Address.fromString("0x4000000000000000000000000000000000000004")
+const FEE_COLLECTOR = Address.fromString("0x5000000000000000000000000000000000000005")
+const USER_A = Address.fromString("0x6000000000000000000000000000000000000006")
+const USER_B = Address.fromString("0x7000000000000000000000000000000000000007")
+
+const CHAIN_SUFFIX = "-42161"
+const vaultId = VAULT.toHexString().toLowerCase() + CHAIN_SUFFIX
+
+function mockVaultReads(totalAssets: i32, totalSupply: i32): void {
+  createMockedFunction(VAULT, "name", "name():(string)").returns([ethereum.Value.fromString("Test Vault")])
+  createMockedFunction(VAULT, "symbol", "symbol():(string)").returns([ethereum.Value.fromString("tVLT")])
+  createMockedFunction(VAULT, "decimals", "decimals():(uint8)").returns([ethereum.Value.fromI32(18)])
+  createMockedFunction(VAULT, "asset", "asset():(address)").returns([ethereum.Value.fromAddress(ASSET)])
+  createMockedFunction(ASSET, "symbol", "symbol():(string)").returns([ethereum.Value.fromString("USDC")])
+  createMockedFunction(ASSET, "decimals", "decimals():(uint8)").returns([ethereum.Value.fromI32(6)])
+  createMockedFunction(VAULT, "totalAssets", "totalAssets():(uint256)")
+    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(totalAssets))])
+  createMockedFunction(VAULT, "totalSupply", "totalSupply():(uint256)")
+    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(totalSupply))])
+}
+
+function vaultCreatedEvent(): VaultCreated {
+  let ev = changetype<VaultCreated>(newMockEvent())
+  ev.address = FACTORY
   ev.parameters = []
-  ev.parameters.push(new ethereum.EventParam("vaultId", ethereum.Value.fromUnsignedBigInt(vaultId)))
-  ev.parameters.push(new ethereum.EventParam("vault", ethereum.Value.fromAddress(vault)))
-  ev.parameters.push(new ethereum.EventParam("asset", ethereum.Value.fromAddress(asset)))
-  ev.parameters.push(new ethereum.EventParam("name", ethereum.Value.fromString(name)))
-  ev.parameters.push(new ethereum.EventParam("symbol", ethereum.Value.fromString(symbol)))
-  ev.parameters.push(new ethereum.EventParam("owner", ethereum.Value.fromAddress(owner)))
-  ev.parameters.push(new ethereum.EventParam("treasury", ethereum.Value.fromAddress(treasury)))
-  ev.parameters.push(new ethereum.EventParam("bufferManager", ethereum.Value.fromAddress(Address.zero())))
-  ev.parameters.push(new ethereum.EventParam("router", ethereum.Value.fromAddress(Address.zero())))
-  ev.parameters.push(new ethereum.EventParam("incentives", ethereum.Value.fromAddress(Address.zero())))
+  ev.parameters.push(new ethereum.EventParam("vault", ethereum.Value.fromAddress(VAULT)))
+  ev.parameters.push(new ethereum.EventParam("asset", ethereum.Value.fromAddress(ASSET)))
+  ev.parameters.push(new ethereum.EventParam("owner", ethereum.Value.fromAddress(OWNER)))
+  ev.parameters.push(new ethereum.EventParam("feeCollector", ethereum.Value.fromAddress(FEE_COLLECTOR)))
+  ev.parameters.push(new ethereum.EventParam("name", ethereum.Value.fromString("Test Vault")))
+  ev.parameters.push(new ethereum.EventParam("symbol", ethereum.Value.fromString("tVLT")))
   return ev
 }
 
-function createDepositEvent(vault: Address, caller: Address, owner: Address, assets: BigInt, shares: BigInt): Deposit {
-  const ev = changetype<Deposit>(newMockEvent())
-  ev.address = vault
+let LOG_IX: i32 = 0
+function nextLog(): BigInt {
+  LOG_IX = LOG_IX + 1
+  return BigInt.fromI32(LOG_IX)
+}
+
+function depositEvent(owner: Address, assets: i32, shares: i32, ts: i32): Deposit {
+  let ev = changetype<Deposit>(newMockEvent())
+  ev.address = VAULT
+  ev.block.timestamp = BigInt.fromI32(ts)
+  ev.logIndex = nextLog()
   ev.parameters = []
-  ev.parameters.push(new ethereum.EventParam("caller", ethereum.Value.fromAddress(caller)))
+  ev.parameters.push(new ethereum.EventParam("sender", ethereum.Value.fromAddress(owner)))
   ev.parameters.push(new ethereum.EventParam("owner", ethereum.Value.fromAddress(owner)))
-  ev.parameters.push(new ethereum.EventParam("assets", ethereum.Value.fromUnsignedBigInt(assets)))
-  ev.parameters.push(new ethereum.EventParam("shares", ethereum.Value.fromUnsignedBigInt(shares)))
+  ev.parameters.push(new ethereum.EventParam("assets", ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(assets))))
+  ev.parameters.push(new ethereum.EventParam("shares", ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(shares))))
   return ev
 }
 
-function createWithdrawEvent(
-  vault: Address,
-  caller: Address,
-  receiver: Address,
-  owner: Address,
-  assets: BigInt,
-  shares: BigInt
-): Withdraw {
-  const ev = changetype<Withdraw>(newMockEvent())
-  ev.address = vault
+function withdrawEvent(owner: Address, assets: i32, shares: i32, ts: i32): Withdraw {
+  let ev = changetype<Withdraw>(newMockEvent())
+  ev.address = VAULT
+  ev.block.timestamp = BigInt.fromI32(ts)
+  ev.logIndex = nextLog()
   ev.parameters = []
-  ev.parameters.push(new ethereum.EventParam("caller", ethereum.Value.fromAddress(caller)))
-  ev.parameters.push(new ethereum.EventParam("receiver", ethereum.Value.fromAddress(receiver)))
+  ev.parameters.push(new ethereum.EventParam("sender", ethereum.Value.fromAddress(owner)))
+  ev.parameters.push(new ethereum.EventParam("receiver", ethereum.Value.fromAddress(owner)))
   ev.parameters.push(new ethereum.EventParam("owner", ethereum.Value.fromAddress(owner)))
-  ev.parameters.push(new ethereum.EventParam("assets", ethereum.Value.fromUnsignedBigInt(assets)))
-  ev.parameters.push(new ethereum.EventParam("shares", ethereum.Value.fromUnsignedBigInt(shares)))
+  ev.parameters.push(new ethereum.EventParam("assets", ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(assets))))
+  ev.parameters.push(new ethereum.EventParam("shares", ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(shares))))
   return ev
 }
 
-function createTransferEvent(vault: Address, from: Address, to: Address, value: BigInt): Transfer {
-  const ev = changetype<Transfer>(newMockEvent())
-  ev.address = vault
+function transferEvent(from: Address, to: Address, value: i32, ts: i32): Transfer {
+  let ev = changetype<Transfer>(newMockEvent())
+  ev.address = VAULT
+  ev.block.timestamp = BigInt.fromI32(ts)
+  ev.logIndex = nextLog()
   ev.parameters = []
   ev.parameters.push(new ethereum.EventParam("from", ethereum.Value.fromAddress(from)))
   ev.parameters.push(new ethereum.EventParam("to", ethereum.Value.fromAddress(to)))
-  ev.parameters.push(new ethereum.EventParam("value", ethereum.Value.fromUnsignedBigInt(value)))
+  ev.parameters.push(new ethereum.EventParam("value", ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(value))))
   return ev
 }
 
-test("handleVaultCreated creates Vault and Factory", () => {
+function positionId(user: Address): string {
+  return vaultId + "-" + user.toHexString().toLowerCase()
+}
+
+beforeEach(() => {
   clearStore()
-  const factory = Address.fromString("0x1000000000000000000000000000000000000001")
-  const vault = Address.fromString("0x2000000000000000000000000000000000000002")
-  const asset = Address.fromString("0x3000000000000000000000000000000000000003")
-  const owner = Address.fromString("0x4000000000000000000000000000000000000004")
-  const treasury = Address.fromString("0x5000000000000000000000000000000000000005")
+  dataSourceMock.setNetwork("arbitrum-one")
+})
 
-  const ev = createVaultCreatedEvent(factory, BigInt.fromI32(0), vault, asset, "Vault", "v", owner, treasury)
-  handleVaultCreated(ev)
+// ---------------------------------------------------------------------------
+// tests
+// ---------------------------------------------------------------------------
 
-  const vid = vault.toHexString().toLowerCase()
+test("handleVaultCreated creates Protocol, Factory and Vault", () => {
+  mockVaultReads(0, 0)
+  handleVaultCreated(vaultCreatedEvent())
+
   assert.entityCount("Vault", 1)
-  assert.fieldEquals("Vault", vid, "address", vault.toHexString())
-
-  const fid = factory.toHexString().toLowerCase()
   assert.entityCount("VaultFactory", 1)
-  assert.fieldEquals("VaultFactory", fid, "vaultCount", "1")
+  assert.fieldEquals("Vault", vaultId, "assetSymbol", "USDC")
+  assert.fieldEquals("Vault", vaultId, "assetDecimals", "6")
+  assert.fieldEquals("VaultFactory", FACTORY.toHexString().toLowerCase() + CHAIN_SUFFIX, "vaultCount", "1")
 })
 
-test("handleDeposit updates position and creates transaction", () => {
-  clearStore()
-  const factory = Address.fromString("0x1000000000000000000000000000000000000001")
-  const vault = Address.fromString("0x2000000000000000000000000000000000000002")
-  const user = Address.fromString("0x6000000000000000000000000000000000000006")
+test("handleDeposit creates UserVaultPosition, PositionLot and Transaction", () => {
+  mockVaultReads(1000, 100)
+  handleVaultCreated(vaultCreatedEvent())
+  handleDeposit(depositEvent(USER_A, 500, 50, 1_000))
 
-  handleVaultCreated(createVaultCreatedEvent(factory, BigInt.fromI32(0), vault, Address.zero(), "Vault", "v", user, user))
-
-  createMockedFunction(vault, "totalAssets", "totalAssets():(uint256)")
-    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(1_000))])
-  createMockedFunction(vault, "totalSupply", "totalSupply():(uint256)")
-    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(100))])
-
-  handleDeposit(createDepositEvent(vault, user, user, BigInt.fromI32(500), BigInt.fromI32(50)))
-
-  const pid = user.toHexString() + "-" + vault.toHexString().toLowerCase()
-  assert.entityCount("UserPosition", 1)
-  assert.fieldEquals("UserPosition", pid, "shares", "50")
-  assert.fieldEquals("UserPosition", pid, "depositedAssets", "500")
+  let pid = positionId(USER_A)
+  assert.entityCount("UserVaultPosition", 1)
+  assert.fieldEquals("UserVaultPosition", pid, "shares", "50")
+  assert.fieldEquals("UserVaultPosition", pid, "totalDepositedAssets", "500")
+  assert.fieldEquals("UserVaultPosition", pid, "lotCounter", "1")
+  assert.fieldEquals("UserVaultPosition", pid, "depositCount", "1")
+  assert.entityCount("PositionLot", 1)
+  assert.fieldEquals("PositionLot", pid + "-0", "sharesRemaining", "50")
   assert.entityCount("Transaction", 1)
 })
 
-test("handleWithdraw updates position and creates transaction", () => {
-  clearStore()
-  const factory = Address.fromString("0x1000000000000000000000000000000000000001")
-  const vault = Address.fromString("0x2000000000000000000000000000000000000002")
-  const user = Address.fromString("0x6000000000000000000000000000000000000006")
+test("handleDeposit writes a VaultHourData bucket (SG-7)", () => {
+  mockVaultReads(1000, 100)
+  handleVaultCreated(vaultCreatedEvent())
+  handleDeposit(depositEvent(USER_A, 500, 50, 7_200)) // hourId = 2
 
-  handleVaultCreated(createVaultCreatedEvent(factory, BigInt.fromI32(0), vault, Address.zero(), "Vault", "v", user, user))
+  assert.entityCount("VaultHourData", 1)
+  assert.fieldEquals("VaultHourData", vaultId + "-2", "depositCount", "1")
+  assert.fieldEquals("VaultHourData", vaultId + "-2", "depositsAssets", "500")
+})
 
-  createMockedFunction(vault, "totalAssets", "totalAssets():(uint256)")
-    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(1_000))])
-  createMockedFunction(vault, "totalSupply", "totalSupply():(uint256)")
-    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(100))])
+test("handleWithdraw reduces shares and consumes FIFO lots", () => {
+  mockVaultReads(1000, 100)
+  handleVaultCreated(vaultCreatedEvent())
+  handleDeposit(depositEvent(USER_A, 500, 50, 1_000))
+  handleWithdraw(withdrawEvent(USER_A, 200, 20, 2_000))
 
-  handleDeposit(createDepositEvent(vault, user, user, BigInt.fromI32(500), BigInt.fromI32(50)))
-  handleWithdraw(createWithdrawEvent(vault, user, user, user, BigInt.fromI32(200), BigInt.fromI32(20)))
-
-  const pid = user.toHexString() + "-" + vault.toHexString().toLowerCase()
-  assert.fieldEquals("UserPosition", pid, "withdrawnAssets", "200")
+  let pid = positionId(USER_A)
+  assert.fieldEquals("UserVaultPosition", pid, "shares", "30")
+  assert.fieldEquals("UserVaultPosition", pid, "totalWithdrawnAssets", "200")
+  assert.fieldEquals("PositionLot", pid + "-0", "sharesRemaining", "30")
   assert.entityCount("Transaction", 2)
 })
 
-test("handleTransfer moves shares between positions and creates transaction", () => {
-  clearStore()
-  const factory = Address.fromString("0x1000000000000000000000000000000000000001")
-  const vault = Address.fromString("0x2000000000000000000000000000000000000002")
-  const from = Address.fromString("0x6000000000000000000000000000000000000006")
-  const to = Address.fromString("0x7000000000000000000000000000000000000007")
+test("handleTransfer preserves individual lots on the receiver (SG-16)", () => {
+  mockVaultReads(1000, 100)
+  handleVaultCreated(vaultCreatedEvent())
+  handleDeposit(depositEvent(USER_A, 200, 20, 1_000))
+  handleDeposit(depositEvent(USER_A, 300, 30, 2_000)) // second lot
+  handleTransfer(transferEvent(USER_A, USER_B, 25, 3_000)) // spans lot 0 (20) + lot 1 (5)
 
-  handleVaultCreated(createVaultCreatedEvent(factory, BigInt.fromI32(0), vault, Address.zero(), "Vault", "v", from, from))
-
-  createMockedFunction(vault, "totalAssets", "totalAssets():(uint256)")
-    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(1_000))])
-  createMockedFunction(vault, "totalSupply", "totalSupply():(uint256)")
-    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(100))])
-
-  handleDeposit(createDepositEvent(vault, from, from, BigInt.fromI32(500), BigInt.fromI32(50)))
-  handleTransfer(createTransferEvent(vault, from, to, BigInt.fromI32(10)))
-
-  const pidFrom = from.toHexString() + "-" + vault.toHexString().toLowerCase()
-  const pidTo = to.toHexString() + "-" + vault.toHexString().toLowerCase()
-  assert.fieldEquals("UserPosition", pidFrom, "shares", "40")
-  assert.fieldEquals("UserPosition", pidTo, "shares", "10")
-  assert.entityCount("Transaction", 2)
+  let toPid = positionId(USER_B)
+  // receiver should get TWO lots, not one aggregated lot
+  assert.fieldEquals("UserVaultPosition", toPid, "lotCounter", "2")
+  assert.fieldEquals("UserVaultPosition", toPid, "shares", "25")
+  assert.fieldEquals("PositionLot", toPid + "-0", "sharesRemaining", "20")
+  assert.fieldEquals("PositionLot", toPid + "-1", "sharesRemaining", "5")
 })
 
-test("VaultDayData.apy updates across days and UserPositionDayData.sharePrice mirrors vault", () => {
-  clearStore()
-  const factory = Address.fromString("0x1000000000000000000000000000000000000001")
-  const vault = Address.fromString("0x2000000000000000000000000000000000000002")
-  const user = Address.fromString("0x6000000000000000000000000000000000000006")
+test("Transfer to/from zero address is ignored (mint/burn)", () => {
+  mockVaultReads(1000, 100)
+  handleVaultCreated(vaultCreatedEvent())
+  handleDeposit(depositEvent(USER_A, 500, 50, 1_000))
 
-  handleVaultCreated(createVaultCreatedEvent(factory, BigInt.fromI32(0), vault, Address.zero(), "Vault", "v", user, user))
+  handleTransfer(transferEvent(Address.zero(), USER_A, 5, 2_000))
+  handleTransfer(transferEvent(USER_A, Address.zero(), 5, 2_000))
 
-  createMockedFunction(vault, "totalAssets", "totalAssets():(uint256)")
-    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(1_000))])
-  createMockedFunction(vault, "totalSupply", "totalSupply():(uint256)")
-    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(100))])
-  const dep1 = createDepositEvent(vault, user, user, BigInt.fromI32(100), BigInt.fromI32(10))
-  dep1.block.timestamp = BigInt.fromI32(86400)
-  handleDeposit(dep1)
-
-  createMockedFunction(vault, "totalAssets", "totalAssets():(uint256)")
-    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(1_100))])
-  createMockedFunction(vault, "totalSupply", "totalSupply():(uint256)")
-    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(100))])
-  const dep2 = createDepositEvent(vault, user, user, BigInt.fromI32(100), BigInt.fromI32(10))
-  dep2.block.timestamp = BigInt.fromI32(86400 * 2)
-  handleDeposit(dep2)
-
-  const vid = vault.toHexString().toLowerCase()
-  const day2Id = vid + "-" + (2).toString()
-  assert.fieldEquals("VaultDayData", day2Id, "apy", "3650")
-
-  const pid = user.toHexString() + "-" + vid
-  const posDay2Id = pid + "-" + (2).toString()
-  assert.fieldEquals("UserPositionDayData", posDay2Id, "sharePrice", "11000000000000000000")
-})
-
-test("Transfer with mint/burn (from/to zero) is ignored", () => {
-  clearStore()
-  const factory = Address.fromString("0x1000000000000000000000000000000000000001")
-  const vault = Address.fromString("0x2000000000000000000000000000000000000002")
-  const user = Address.fromString("0x6000000000000000000000000000000000000006")
-
-  handleVaultCreated(createVaultCreatedEvent(factory, BigInt.fromI32(0), vault, Address.zero(), "Vault", "v", user, user))
-
-  createMockedFunction(vault, "totalAssets", "totalAssets():(uint256)")
-    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(1_000))])
-  createMockedFunction(vault, "totalSupply", "totalSupply():(uint256)")
-    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(100))])
-  handleDeposit(createDepositEvent(vault, user, user, BigInt.fromI32(500), BigInt.fromI32(50)))
-
-  handleTransfer(createTransferEvent(vault, Address.zero(), user, BigInt.fromI32(5)))
-  handleTransfer(createTransferEvent(vault, user, Address.zero(), BigInt.fromI32(5)))
-
-  assert.entityCount("Transaction", 1)
+  assert.entityCount("Transaction", 1) // only the deposit
 })

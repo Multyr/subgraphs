@@ -23,9 +23,11 @@ export const ONE_E8_BD = BigDecimal.fromString("100000000")
 export const ONE_E18_BD = BigDecimal.fromString("1000000000000000000")
 
 // Time constants
+export const SECONDS_PER_HOUR = 3600
 export const SECONDS_PER_DAY = 86400
 export const SECONDS_PER_YEAR = 31536000
 export const DAYS_PER_YEAR_BD = BigDecimal.fromString("365")
+export const HOURS_PER_YEAR_BD = BigDecimal.fromString("8760")
 
 // Basis points
 export const BPS_DIVISOR = BigInt.fromI32(10000)

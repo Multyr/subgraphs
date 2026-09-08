@@ -438,6 +438,10 @@ export function getOrCreateUserPosition(
     // Counts
     position.depositCount = 0
     position.withdrawCount = 0
+
+    // SG-16 — FIFO lot bookkeeping
+    position.lotCounter = 0            // next free lot index (monotonic)
+    position.firstActiveLotIndex = 0   // compaction cursor
   }
 
   return position

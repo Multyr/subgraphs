@@ -1,0 +1,223 @@
+# =============================================================================
+# Canonical dashboard query set (SG-5)
+# =============================================================================
+# Written against schema.graphql (schema v2.x + SG-1…SG-16 additions).
+# Supersedes the queries in the dashboard repo's monitoring-spec.md /
+# event-catalog.md, which reference fields that do not exist.
+#
+# Correct names to remember:
+#   entity StrategyHarvestEvent  -> query strategyHarvestEvents { pnl, realized }
+#   PartnerEvent.bps             (NOT commissionBps)
+#   ReferralBoundEvent.user      (NOT depositor)
+#   DepositWithReferralEvent.user
+#
+# Pagination: never `first: 1000, skip: N`. Use cursor pagination
+#   ( orderBy: id, orderDirection: asc, where: { id_gt: $lastId } )
+# on every high-volume entity.
+# =============================================================================
+
+
+# --- health / freshness -------------------------------------------------------
+query SubgraphMeta {
+  _meta { block { number hash timestamp } deployment hasIndexingErrors }
+}
+
+
+# --- fleet overview (run once per chain; Protocol is per-chain) --------------
+query FleetOverview($chainId: Int!) {
+  protocols(where: { chainId: $chainId }) {
+    id chainId totalVaults totalTvlUsd totalUsers updatedAt
+  }
+  vaults(where: { chainId: $chainId }, orderBy: tvlUsd, orderDirection: desc) {
+    id name symbol asset totalAssets totalSupply sharePrice
+    tvlUsd assetPriceUsd priceStatus            # SG-4: MISSING => render "unavailable", never 0
+    apy1d apy7d apy30d
+    status depositsEnabled withdrawalsEnabled
+    activeAllPause activeDepositsPause activeWithdrawalsPause   # SG-9: non-null => currently paused
+    owner guardian vetoer bufferManager strategyRouter oracle totalUsers
+  }
+}
+
+
+# --- vault time series -------------------------------------------------------
+query VaultDailySeries($vault: String!, $fromDay: Int!, $toDay: Int!) {
+  vaultDayDatas(
+    where: { vault: $vault, date_gte: $fromDay, date_lte: $toDay }
+    orderBy: date orderDirection: asc first: 1000
+  ) {
+    date totalAssets sharePrice tvlUsd dailyReturn apy
+    depositsAssets depositsUsd withdrawalsAssets withdrawalsUsd
+    netFlowAssets netFlowUsd depositCount withdrawCount uniqueUsers
+  }
+}
+
+# SG-7 — intraday series
+query VaultHourlySeries($vault: String!, $fromHour: Int!, $toHour: Int!) {
+  vaultHourDatas(
+    where: { vault: $vault, hourId_gte: $fromHour, hourId_lte: $toHour }
+    orderBy: hourId orderDirection: asc first: 1000
+  ) {
+    hourId periodStartUnix totalAssets sharePrice tvlUsd
+    netFlowAssets netFlowUsd depositCount withdrawCount uniqueUsers hourlyReturn
+  }
+}
+
+query PpsSnapshots($vault: String!, $fromTs: BigInt!) {
+  ppsSnapshots(
+    where: { vault: $vault, timestamp_gte: $fromTs }
+    orderBy: timestamp orderDirection: asc first: 1000
+  ) { snapshotTimestamp blockNumber pps totalAssets totalSupply }
+}
+
+
+# --- RPC <-> subgraph reconciliation (alert > 0.1% delta) --------------------
+query VaultStateForReconciliation($vault: ID!) {
+  vault(id: $vault) { totalAssets totalSupply sharePrice tvlUsd updatedAt }
+  _meta { block { number timestamp } }
+}
+
+
+# --- withdrawal queue / latency --------------------------------------------
+query ClaimLatency($vault: String!, $fromTs: BigInt!) {
+  claimRequests(
+    where: { vault: $vault, requestedAt_gte: $fromTs }
+    orderBy: requestedAt orderDirection: asc first: 1000
+  ) { id user shares assetsEstimated status isImmediate requestedAt settledAt cancelledAt }
+}
+# backend: latency = settledAt - requestedAt for status == SETTLED; p50/p95/max.
+
+query PendingClaims($vault: String!) {
+  claimRequests(
+    where: { vault: $vault, status: "PENDING" }
+    orderBy: requestedAt orderDirection: asc first: 1000
+  ) { id user shares requestedAt }
+}
+
+
+# --- strategies / adapters -------------------------------------------------
+query StrategyState($vault: String!) {
+  vaultStrategies(where: { vault: $vault }) {
+    id strategy totalAssets weightBps priority enabled
+    totalHarvestCount totalHarvestFailCount lastHarvestPnl lastHarvestRealized lastHarvestTimestamp
+  }
+  strategyRouters(where: { vault: $vault }) {
+    id lossCapBps maxOracleDeviationBps totalHarvestBatches cumulativeHarvestPnl
+  }
+}
+
+query HarvestHistory($vault: String!, $fromTs: BigInt!) {
+  strategyHarvestEvents(
+    where: { vault: $vault, timestamp_gte: $fromTs }
+    orderBy: timestamp orderDirection: desc first: 1000
+  ) {
+    id strategy pnl realized success failureReason
+    gasUsed gasPrice txFeeWei                     # SG-2
+    timestamp blockNumber txHash
+  }
+  harvestBatches(
+    where: { vault: $vault, timestamp_gte: $fromTs }
+    orderBy: timestamp orderDirection: desc first: 200
+  ) { id visited aggregatePnl aggregateRealized timestamp txHash }
+}
+
+# SG-8 — allocation history per strategy
+query StrategyDailySeries($vault: String!, $fromDay: Int!) {
+  strategyDayDatas(
+    where: { vault: $vault, dayId_gte: $fromDay }
+    orderBy: dayId orderDirection: asc first: 1000
+  ) {
+    dayId strategy totalAssets totalAssetsUsd weightBps allocationPct
+    harvestCount harvestPnl harvestRealized harvestFailures
+    routedIn routedOut idleCash enabled quarantined
+  }
+}
+
+# SG-13 — adapter health over time
+query AdapterHealth($vault: String!, $fromDay: Int!) {
+  adapterHealthSnapshots(
+    where: { vault: $vault, dayId_gte: $fromDay }
+    orderBy: dayId orderDirection: asc first: 1000
+  ) {
+    dayId adapter enabled quarantined flagged consecutiveFailures failuresToday
+    apyBps incentiveApyBps
+  }
+}
+
+
+# --- automation -----------------------------------------------------------
+query UpkeepHistory($fromTs: BigInt!) {
+  upkeepActions(
+    where: { timestamp_gte: $fromTs }
+    orderBy: timestamp orderDirection: desc first: 1000
+  ) {
+    id upkeep op opType upkeepKind arg success       # SG-3
+    gasUsed gasPrice txFeeWei                        # SG-2
+    timestamp blockNumber txHash
+  }
+}
+# example: upkeepActions(where: { opType: SETTLE }) — wait, use EPOCH_CLOSE/EPOCH_FUND
+#          upkeepActions(where: { opType: HARVEST, upkeepKind: STRATEGY })
+
+
+# --- governance / config audit trail ------------------------------------
+query GovernanceTimeline($vault: String!, $fromTs: BigInt!) {
+  ownershipEvents(where: { vault: $vault, timestamp_gte: $fromTs }
+    orderBy: timestamp orderDirection: desc first: 200) {
+    id previousOwner newOwner isPending timestamp txHash }
+
+  moduleChanges(where: { vault: $vault, timestamp_gte: $fromTs }
+    orderBy: timestamp orderDirection: desc first: 500) {
+    id selector module role timestamp blockNumber txHash }
+
+  moduleAuthorizationEvents(where: { vault: $vault, timestamp_gte: $fromTs }  # SG-10
+    orderBy: timestamp orderDirection: desc first: 500) {
+    id module authorized timestamp txHash }
+
+  deadDepositEvents(where: { vault: $vault }) {                               # SG-11
+    id assets shares dead timestamp txHash }
+
+  vaultPauseEvents(where: { vault: $vault }                                   # SG-9
+    orderBy: pausedAt orderDirection: desc first: 200) {
+    id scope pausedAt unpausedAt durationSeconds active guardianTriggered anomalous }
+
+  sealEvents(where: { vault: $vault }
+    orderBy: timestamp orderDirection: desc first: 50) {
+    id type sealer configHash timestamp txHash }
+}
+
+query OracleConfigTimeline($fromTs: BigInt!) {
+  oracleRegistryEvents(where: { timestamp_gte: $fromTs }
+    orderBy: timestamp orderDirection: desc first: 200) {
+    id type asset vault oracle maxStaleness paramType timestamp txHash   # SG-12: type OVERRIDE_CLEARED
+  }
+}
+
+
+# --- pricing (SG-4 / SG-14) --------------------------------------------
+query TokenPrices($chainId: Int!) {
+  tokenPrices(where: { chainId: $chainId }) {
+    id token symbol priceUsd source status stalenessSeconds updatedAt
+    feed { id feedAddress decimals description }
+  }
+}
+
+query TokenPriceHistory($token: Bytes!, $chainId: Int!, $fromDay: Int!) {
+  tokenPriceDayDatas(
+    where: { token: $token, chainId: $chainId, dayId_gte: $fromDay }
+    orderBy: dayId orderDirection: asc first: 1000
+  ) { dayId priceUsd status source samples minPriceUsd maxPriceUsd }
+}
+
+
+# --- referral / partner (correct field names) --------------------------
+query ReferralActivity($chainId: Int!, $fromTs: BigInt!) {
+  referralBoundEvents(where: { chainId: $chainId, timestamp_gte: $fromTs }
+    orderBy: timestamp orderDirection: desc first: 1000) { id user referrer timestamp txHash }
+
+  depositWithReferralEvents(where: { chainId: $chainId, timestamp_gte: $fromTs }
+    orderBy: timestamp orderDirection: desc first: 1000) { id user referrer assets shares timestamp txHash }
+
+  partnerEvents(where: { chainId: $chainId }
+    orderBy: timestamp orderDirection: desc first: 200) {
+    id partner eventType enabled bps capPerEpoch expiry recipient timestamp txHash }
+}

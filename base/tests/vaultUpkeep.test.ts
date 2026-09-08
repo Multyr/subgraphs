@@ -2,9 +2,22 @@ import {
   test,
   assert,
   clearStore,
-  newMockEvent
+  newMockEvent,
+  createMockedFunction,
+  dataSourceMock,
+  beforeEach
 } from "matchstick-as/assembly/index"
 import { Address, BigInt, ethereum, Bytes } from "@graphprotocol/graph-ts"
+
+const UPKEEP_ADDR = Address.fromString("0x1000000000000000000000000000000000000001")
+
+beforeEach(() => {
+  clearStore()
+  dataSourceMock.setNetwork("arbitrum-one")
+  // handleUpkeepPerformed reads VaultUpkeep.core() to wire VaultDeployment
+  createMockedFunction(UPKEEP_ADDR, "core", "core():(address)")
+    .returns([ethereum.Value.fromAddress(Address.zero())])
+})
 
 import { handleUpkeepPerformed } from "../src/mappings"
 import { UpkeepPerformed } from "../generated/VaultUpkeep/VaultUpkeep"

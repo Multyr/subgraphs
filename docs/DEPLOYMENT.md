@@ -3,6 +3,29 @@
 > **Version:** 2.1 (with PriceStatus support)
 > **Last Updated:** 2026-01-26
 
+## v3 dashboard work order (SG-1…SG-16)
+
+See `docs/DASHBOARD-QUERIES.graphql` (canonical query set) and `docs/CROSS-CHAIN.md`.
+
+- **Address source of truth:** `deployments/<chain>/*.json`. `arbitrum/subgraph.yaml`
+  currently points at the pre-audit shadow deployment (`multyr-core/broadcast` +
+  `multyr-strategies/deployments/shadow/forktest`). **Verify `startBlock` on the
+  explorer before a production `graph deploy`** — the recorded deploy blocks
+  (~25.8M) must be re-checked against the factory / strategyUpkeep deploy txs.
+- **base / ethereum manifests are still stubbed** (dead addresses). They also do
+  not carry the `receipt: true` handler flags added to arbitrum for SG-2 — add
+  those when those chains get real deploys.
+- **Network source parity:** `arbitrum/src/` + `arbitrum/abis/` + `arbitrum/tests/`
+  are the source of truth; `npm run sync` copies them to `base/` and `ethereum/`.
+  CI fails if they drift (`npm run sync:check`).
+- **Retention (SG-7):** keep `VaultHourData` ~90 days, `VaultDayData` indefinitely.
+  This is a Graph Node indexer pruning setting (`--prune` / `indexerHints`), not a
+  schema concern — configure it on the indexer, not here.
+- **ChainlinkFeed registry (SG-4):** USDC feeds are seeded lazily from the
+  hardcoded per-chain constants. Non-USDC assets resolve to `status: MISSING`
+  (never a silent 0) until a `ChainlinkFeed` row exists for them — those must be
+  seeded (bootstrap or a future on-chain oracle-config event handler).
+
 ## Schema Updates (v2.1)
 
 ### PriceStatus Enum

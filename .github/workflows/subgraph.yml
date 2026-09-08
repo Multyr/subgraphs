@@ -1,0 +1,43 @@
+name: subgraph
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "schema.graphql"
+      - "*/src/**"
+      - "*/abis/**"
+      - "*/subgraph.yaml"
+      - "*/tests/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/subgraph.yml"
+
+jobs:
+  build-and-test:
+    # SG-1 — Matchstick has no Windows binary; it runs fine on Linux/macOS.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # base/ethereum must be byte-identical to arbitrum (src + abis + tests)
+      - name: Source parity check
+        run: npm run sync:check
+
+      - name: Codegen (all networks)
+        run: npm run codegen:all
+
+      - name: Build (all networks)
+        run: npm run build:all
+
+      - name: Matchstick tests (all networks)
+        run: npm run test:all
