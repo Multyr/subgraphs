@@ -444,6 +444,38 @@
   },
   {
     "type": "event",
+    "name": "ExternalTVLPokeFailed",
+    "inputs": [
+      {
+        "name": "strategy",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "reason",
+        "type": "bytes",
+        "indexed": false,
+        "internalType": "bytes"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ExternalTVLPoked",
+    "inputs": [
+      {
+        "name": "strategy",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "OwnershipTransferred",
     "inputs": [
       {
@@ -635,6 +667,16 @@
   },
   {
     "type": "error",
+    "name": "DeployIdleCooldown",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "HarvestCooldown",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "IndexOutOfBounds",
     "inputs": []
   },
@@ -646,6 +688,11 @@
   {
     "type": "error",
     "name": "NotIStrategyVault",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RebalanceCooldown",
     "inputs": []
   },
   {

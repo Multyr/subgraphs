@@ -38,9 +38,9 @@ enum StrategyState {
 # Price status for USD values
 enum PriceStatus {
   VALID           # Price from Chainlink oracle
-  STALE           # Price older than threshold (e.g., 1 hour)
+  STALE           # Price older than the configured threshold (currently 24 hours)
   FALLBACK        # Using hardcoded fallback (1.0 for stablecoins)
-  MISSING         # No price source available - USD values are 0
+  MISSING         # No price source available - USD values are null
 }
 
 # Which automation contract an UpkeepAction came from (SG-3)
@@ -87,7 +87,8 @@ type Protocol @entity {
   chainId: Int!
   factoryAddress: Bytes!
   totalVaults: Int!
-  totalTvlUsd: BigDecimal!
+  totalTvlUsd: BigDecimal
+  priceStatus: PriceStatus!
   totalUsers: Int!
   updatedAt: BigInt!
 }
@@ -98,7 +99,8 @@ type VaultFactory @entity {
   address: Bytes!
   chainId: Int!
   vaultCount: Int!
-  totalTvlUsd: BigDecimal!
+  totalTvlUsd: BigDecimal
+  priceStatus: PriceStatus!
   vaults: [Vault!]! @derivedFrom(field: "factory")
   createdAt: BigInt!
   createdAtBlock: BigInt!
@@ -133,20 +135,34 @@ type Vault @entity {
   sharePrice: BigInt!
 
   # USD values (updated via oracle or config)
-  tvlUsd: BigDecimal!
-  assetPriceUsd: BigDecimal!
+  tvlUsd: BigDecimal
+  assetPriceUsd: BigDecimal
   priceStatus: PriceStatus!
 
   # Performance metrics (computed from day data)
   apy1d: BigDecimal!
   apy7d: BigDecimal!
   apy30d: BigDecimal!
+  apy: BigDecimal!              # 30-day headline alias
+  netApy1d: BigDecimal!         # net of perfRateX; deposit/exit fee drag remains user-specific
+  netApy7d: BigDecimal!
+  netApy30d: BigDecimal!
+  netApy: BigDecimal!           # 30-day headline alias
 
   # Vault configuration
   depositFeeBps: Int!
   withdrawFeeBps: Int!
+  performanceFeeBps: Int!
+  perfRateX: BigInt!
   immediateExitPenaltyBps: Int!
   forceExitPenaltyBps: Int!
+
+  # Effective limits from GlobalConfig
+  depositCap: BigInt!
+  remainingDepositCapacity: BigInt!
+  userDepositCap: BigInt!
+  minimumDeposit: BigInt!
+  epochDuration: BigInt!
 
   # Status flags
   status: VaultStatus!
@@ -209,8 +225,9 @@ type VaultDayData @entity {
   sharePrice: BigInt!
 
   # USD values
-  tvlUsd: BigDecimal!
-  assetPriceUsd: BigDecimal!
+  tvlUsd: BigDecimal
+  assetPriceUsd: BigDecimal
+  priceStatus: PriceStatus!
 
   # Performance
   dailyReturn: BigDecimal!
@@ -218,11 +235,11 @@ type VaultDayData @entity {
 
   # Volume
   depositsAssets: BigInt!
-  depositsUsd: BigDecimal!
+  depositsUsd: BigDecimal
   withdrawalsAssets: BigInt!
-  withdrawalsUsd: BigDecimal!
+  withdrawalsUsd: BigDecimal
   netFlowAssets: BigInt!
-  netFlowUsd: BigDecimal!
+  netFlowUsd: BigDecimal
 
   # Counts
   depositCount: Int!
@@ -243,15 +260,16 @@ type VaultHourData @entity {
   totalAssets: BigInt!
   totalSupply: BigInt!
   sharePrice: BigInt!
-  tvlUsd: BigDecimal!
-  assetPriceUsd: BigDecimal!
+  tvlUsd: BigDecimal
+  assetPriceUsd: BigDecimal
+  priceStatus: PriceStatus!
 
   depositsAssets: BigInt!
-  depositsUsd: BigDecimal!
+  depositsUsd: BigDecimal
   withdrawalsAssets: BigInt!
-  withdrawalsUsd: BigDecimal!
+  withdrawalsUsd: BigDecimal
   netFlowAssets: BigInt!
-  netFlowUsd: BigDecimal!
+  netFlowUsd: BigDecimal
 
   depositCount: Int!
   withdrawCount: Int!
@@ -274,29 +292,30 @@ type UserVaultPosition @entity {
   # Current holdings
   shares: BigInt!
   assets: BigInt!
-  assetsUsd: BigDecimal!
+  assetsUsd: BigDecimal
+  priceStatus: PriceStatus!
 
   # Cost basis tracking (FIFO)
   netDepositedAssets: BigInt!
-  netDepositedUsd: BigDecimal!
+  netDepositedUsd: BigDecimal
   costBasisFifoAssets: BigInt!
-  costBasisFifoUsd: BigDecimal!
+  costBasisFifoUsd: BigDecimal
 
   # P&L tracking
   realizedPnlAssets: BigInt!
-  realizedPnlUsd: BigDecimal!
+  realizedPnlUsd: BigDecimal
   unrealizedPnlAssets: BigInt!
-  unrealizedPnlUsd: BigDecimal!
+  unrealizedPnlUsd: BigDecimal
 
   # Earned (total gains)
   earnedAssets: BigInt!
-  earnedUsd: BigDecimal!
+  earnedUsd: BigDecimal
 
   # Cumulative stats
   totalDepositedAssets: BigInt!
-  totalDepositedUsd: BigDecimal!
+  totalDepositedUsd: BigDecimal
   totalWithdrawnAssets: BigInt!
-  totalWithdrawnUsd: BigDecimal!
+  totalWithdrawnUsd: BigDecimal
 
   # Timestamps
   createdAt: BigInt!
@@ -330,9 +349,9 @@ type PositionLot @entity {
 
   sharesBought: BigInt!
   assetsCost: BigInt!
-  usdCost: BigDecimal!
+  usdCost: BigDecimal
   sharePriceAtBuy: BigInt!
-  assetPriceUsdAtBuy: BigDecimal!
+  assetPriceUsdAtBuy: BigDecimal
 
   # Current state
   sharesRemaining: BigInt!
@@ -354,9 +373,10 @@ type UserPositionDayData @entity {
   # Snapshot
   shares: BigInt!
   assets: BigInt!
-  assetsUsd: BigDecimal!
+  assetsUsd: BigDecimal
   sharePrice: BigInt!
-  assetPriceUsd: BigDecimal!
+  assetPriceUsd: BigDecimal
+  priceStatus: PriceStatus!
 
   # Cumulative at end of day
   totalDepositedAssets: BigInt!
@@ -385,7 +405,8 @@ type Transaction @entity {
   # Amounts
   shares: BigInt!
   assets: BigInt!
-  assetsUsd: BigDecimal!
+  assetsUsd: BigDecimal
+  priceStatus: PriceStatus!
 
   # For transfers
   from: Bytes
@@ -403,18 +424,24 @@ type Transaction @entity {
 
   # Price at tx time
   sharePrice: BigInt!
-  assetPriceUsd: BigDecimal!
+  assetPriceUsd: BigDecimal
 }
 
 # Pending claim request. ID: vaultId-claimId
 type ClaimRequest @entity {
   id: ID!
   vault: Vault!
+  epoch: WithdrawalEpoch
   user: Bytes!
   chainId: Int!
 
   claimId: BigInt!
+  epochId: BigInt
   shares: BigInt!
+  grossShares: BigInt!
+  netShares: BigInt!
+  feeShares: BigInt!
+  assets: BigInt!
   assetsEstimated: BigInt!
 
   isImmediate: Boolean!
@@ -429,6 +456,92 @@ type ClaimRequest @entity {
 
   cancelledAt: BigInt
   cancelTxHash: Bytes
+}
+
+# EpochedQueueModule settlement epoch. ID: {vaultId}-{epochId}
+enum WithdrawalEpochState {
+  OPEN
+  CLOSED
+  FUNDED
+}
+
+type WithdrawalEpoch @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+  epochId: BigInt!
+  state: WithdrawalEpochState!
+
+  openedAt: BigInt!
+  epochDuration: BigInt!
+  epochClosesAt: BigInt!
+  closedAt: BigInt
+  fundedAt: BigInt
+  ppsAtClose: BigInt
+
+  totalGrossShares: BigInt!
+  totalNetShares: BigInt!
+  totalNetAssets: BigInt!
+  totalFeeShares: BigInt!
+  claimCount: BigInt!
+  cancelledClaimCount: BigInt!
+  claimedCount: BigInt!
+  claimedAssets: BigInt!
+
+  lastFundingNeeded: BigInt
+  lastHotBefore: BigInt
+  lastHotAfter: BigInt
+  lastFreeLiquidity: BigInt
+  lastShortfall: BigInt
+  updatedAt: BigInt!
+
+  claims: [ClaimRequest!]! @derivedFrom(field: "epoch")
+  events: [WithdrawalEpochEvent!]! @derivedFrom(field: "epoch")
+}
+
+enum WithdrawalEpochEventType {
+  OPENED
+  WITHDRAWAL_REQUESTED
+  WITHDRAWAL_CANCELLED
+  CLOSED
+  FUND_ATTEMPT
+  FUND_SKIPPED
+  FUNDING_SHORTFALL
+  FUNDED
+  ASSETS_CLAIMED
+}
+
+# Lossless EpochedQueueModule event history. ID: txHash-logIndex
+type WithdrawalEpochEvent @entity {
+  id: ID!
+  vault: Vault!
+  epoch: WithdrawalEpoch!
+  chainId: Int!
+  epochId: BigInt!
+  eventType: WithdrawalEpochEventType!
+
+  claimId: BigInt
+  user: Bytes
+  grossShares: BigInt
+  netShares: BigInt
+  feeShares: BigInt
+  sharesReturned: BigInt
+  ppsAtClose: BigInt
+  totalNetShares: BigInt
+  totalNetAssets: BigInt
+  totalFeeShares: BigInt
+  assets: BigInt
+  needed: BigInt
+  hotBefore: BigInt
+  hotAfter: BigInt
+  cursorBefore: BigInt
+  cursorAfter: BigInt
+  freeLiquidity: BigInt
+  shortfall: BigInt
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
 }
 
 # Force withdraw event - guaranteed exit operation. ID: txHash-logIndex
@@ -498,7 +611,8 @@ type StrategyDayData @entity {
 
   # Allocation snapshot (last value seen in the day)
   totalAssets: BigInt!
-  totalAssetsUsd: BigDecimal!
+  totalAssetsUsd: BigDecimal
+  priceStatus: PriceStatus!
   weightBps: Int!
   allocationPct: BigDecimal!    # share of vault NAV, 0..100
 
@@ -529,7 +643,7 @@ type TokenPrice @entity {
   symbol: String!
   decimals: Int!
 
-  priceUsd: BigDecimal!
+  priceUsd: BigDecimal
   source: String!
   status: PriceStatus!
 
@@ -562,13 +676,13 @@ type TokenPriceDayData @entity {
   chainId: Int!
   tokenPrice: TokenPrice!
 
-  priceUsd: BigDecimal!          # last price seen in the day
+  priceUsd: BigDecimal           # last valid price seen in the day
   status: PriceStatus!
   source: String!
 
   samples: Int!
-  minPriceUsd: BigDecimal!
-  maxPriceUsd: BigDecimal!
+  minPriceUsd: BigDecimal
+  maxPriceUsd: BigDecimal
 }
 
 # =============================================================================
@@ -583,9 +697,9 @@ type User @entity {
 
   # Aggregated stats
   totalPositions: Int!
-  totalAssetsUsd: BigDecimal!
-  totalEarnedUsd: BigDecimal!
-  totalRealizedPnlUsd: BigDecimal!
+  totalAssetsUsd: BigDecimal
+  totalEarnedUsd: BigDecimal
+  totalRealizedPnlUsd: BigDecimal
 
   firstSeenAt: BigInt!
   lastActiveAt: BigInt!
@@ -986,6 +1100,7 @@ type WarmAdapterEvent @entity {
 
   type: WarmAdapterEventType!
   adapter: Bytes!
+  cap: BigInt
 
   timestamp: BigInt!
   blockNumber: BigInt!
@@ -1409,6 +1524,7 @@ enum OracleRegistryEventType {
   ASSET_CONFIG_SET    # AssetOracleConfigSet(asset, oracle, maxStaleness)
   VAULT_OVERRIDE_SET  # VaultOracleOverrideSet(vault, oracle, maxStaleness)
   DEFAULT_CONFIG_SET  # DefaultOracleConfigSet(oracle, maxStaleness)
+  OVERRIDE_SET        # VaultOverrideSet(vault, paramType) — effective config changed
   OVERRIDE_CLEARED    # VaultOverrideCleared(vault, paramType) — SG-12
 }
 
@@ -1419,10 +1535,10 @@ type OracleRegistryEvent @entity {
 
   type: OracleRegistryEventType!
   asset: Bytes           # for ASSET_CONFIG_SET
-  vault: Bytes           # for VAULT_OVERRIDE_SET / OVERRIDE_CLEARED
-  oracle: Bytes!         # zero address for OVERRIDE_CLEARED
-  maxStaleness: BigInt!  # zero for OVERRIDE_CLEARED
-  paramType: Int         # for OVERRIDE_CLEARED — GlobalConfig.ParamType enum value
+  vault: Bytes           # for VAULT_OVERRIDE_SET / OVERRIDE_SET / OVERRIDE_CLEARED
+  oracle: Bytes!         # zero address for non-oracle overrides
+  maxStaleness: BigInt!  # zero for non-oracle overrides
+  paramType: Int         # GlobalConfig.ParamType for generic set/cleared overrides
 
   timestamp: BigInt!
   blockNumber: BigInt!

@@ -27,8 +27,6 @@ export function snapshotAdapterHealth(binding: AdapterBinding, block: ethereum.B
     s.adapter = binding.adapter
     s.chainId = binding.chainId
     s.failuresToday = 0
-    s.apyBps = null
-    s.incentiveApyBps = null
     s.totalAssets = null
     s.lastHarvestAt = null
   }

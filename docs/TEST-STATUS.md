@@ -1,7 +1,8 @@
 # Subgraph Tests — Status
 
-**Status:** ✅ executing (macOS + CI). The old "blocked on Windows" note is resolved —
-Matchstick has no Windows binary, but it runs fine on Linux/macOS, and CI runs it now.
+**Status:** ✅ all 57 tests pass locally (19 per network); coverage reports generate
+for all three networks. Matchstick is pinned to 0.6.0 so CI does not depend on the
+GitHub "latest release" API.
 
 ## How it runs
 
@@ -11,7 +12,8 @@ Matchstick has no Windows binary, but it runs fine on Linux/macOS, and CI runs i
   `<network>/node_modules -> ../node_modules` because Matchstick resolves its
   AssemblyScript lib from the network directory.
 - CI: `.github/workflows/subgraph.yml` runs `sync:check` → `codegen:all` →
-  `build:all` → `test:all` on every PR touching schema / mappings / abis / tests.
+  `build:all` → `test:all` → `test:coverage:all` on every PR touching schema /
+  mappings / abis / tests, then uploads the coverage output.
 
 ## Coverage
 
@@ -19,15 +21,15 @@ Matchstick has no Windows binary, but it runs fine on Linux/macOS, and CI runs i
 
 | File | Tests | Covers |
 |---|---|---|
-| `mappings.test.ts` | 6 | `handleVaultCreated`, `handleDeposit` (position + FIFO lot + `lotCounter` + Transaction), `VaultHourData` bucket (SG-7), `handleWithdraw` FIFO consume, `handleTransfer` lot preservation (SG-16), mint/burn filtering |
+| `mappings.test.ts` | 9 | creation/deposit/withdraw/transfer, hourly data (SG-7), FIFO lot preservation and compaction (SG-16), epoch linkage/close timing, loss-inclusive and net APY |
 | `sgWorkOrder.test.ts` | 2 | `UpkeepAction.opType`/`upkeepKind` decode (SG-3), `VaultPauseEvent` open→close→`durationSeconds` (SG-9) |
 | `vaultUpkeep.test.ts` | 4 | `handleUpkeepPerformed` → `UpkeepAction` (raw `op`, success/failure, unique ids) |
+| `requirements.test.ts` | 4 | missing-price/null propagation, dynamic middleware feed registration and daily price history (SG-4/SG-14), `StrategyDayData` (SG-8), `AdapterHealthSnapshot` (SG-13) |
 
-**Total: 12 tests × 3 networks = 36.**
+**Total: 19 tests × 3 networks = 57.**
 
-## Gaps / follow-ups
+## External acceptance
 
-- No coverage yet for `pricing.ts` MISSING-vs-zero path (SG-4), `StrategyDayData`
-  (SG-8), `AdapterHealthSnapshot` (SG-13), `TokenPriceDayData` (SG-14), the
-  FIFO compaction cursor edge cases, or APY math.
-- `graph test -c` coverage report not wired into CI yet.
+- A green protected-branch check requires the workflow to run in the remote
+  repository; local files cannot configure repository branch protection.
+- Live query/reconciliation acceptance requires a deployed, indexed endpoint.

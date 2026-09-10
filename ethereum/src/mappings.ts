@@ -10,7 +10,7 @@ import {
 } from "../generated/VaultFactory/VaultFactory"
 
 // Core Events (from Vault.json ABI via VaultTemplate)
-// Note: Vault.json is a merged ABI (CoreVault + QueueModule + AdminModule)
+// Note: Vault.json is a merged ABI (CoreVault + EpochedQueueModule + AdminModule)
 // because modules are called via delegatecall and emit events from CoreVault address
 import {
   Deposit as DepositEvent,
@@ -24,6 +24,16 @@ import {
   ClaimDequeued as ClaimDequeuedEvent,
   SharesFrozen as SharesFrozenEvent,
   SharesUnfrozen as SharesUnfrozenEvent,
+  // Epoched withdrawal queue events
+  EpochOpened as EpochOpenedEvent,
+  EpochWithdrawalRequested as EpochWithdrawalRequestedEvent,
+  EpochWithdrawalCancelled as EpochWithdrawalCancelledEvent,
+  EpochClosed as EpochClosedEvent,
+  EpochFundAttempt as EpochFundAttemptEvent,
+  EpochFundSkipped as EpochFundSkippedEvent,
+  EpochFundingShortfall as EpochFundingShortfallEvent,
+  EpochFunded as QueueEpochFundedEvent,
+  EpochAssetsClaimed as EpochAssetsClaimedEvent,
   // Pause events
   AllPaused as AllPausedEvent,
   AllUnpaused as AllUnpausedEvent,
@@ -74,7 +84,7 @@ import {
   RoutedToStrategy as RoutedToStrategyEvent,
   Realized as RealizedEvent,
   ReserveTargetRestored as ReserveTargetRestoredEvent,
-  EpochRolled as EpochRolledEvent,
+  WithdrawalCapEpochRolled as WithdrawalCapEpochRolledEvent,
   VaultPpsSnapshot as VaultPpsSnapshotEvent,
   // Ops high-level
   Rebalanced as RebalancedEvent,
@@ -103,7 +113,6 @@ import {
   OwnershipTransferInitiated as OwnershipTransferInitiatedEvent,
   OwnershipTransferred as OwnershipTransferredEvent,
   AuthorizedSealerSet as AuthorizedSealerSetEvent,
-  SealPrepared as SealPreparedEvent,
   SystemSealed as SystemSealedEvent,
   // Component timelock events
   ComponentsTimelockEnabled as ComponentsTimelockEnabledEvent,
@@ -218,8 +227,11 @@ import {
   DefaultOracleConfigSet as DefaultOracleConfigSetEvent,
   AssetOracleConfigSet as AssetOracleConfigSetEvent,
   VaultOracleOverrideSet as VaultOracleOverrideSetEvent,
-  VaultOverrideCleared as VaultOverrideClearedEvent
+  VaultOverrideSet as VaultOverrideSetEvent,
+  VaultOverrideCleared as VaultOverrideClearedEvent,
+  GlobalConfig as GlobalConfigContract
 } from "../generated/GlobalConfig/GlobalConfig"
+import { PriceOracleMiddleware } from "../generated/GlobalConfig/PriceOracleMiddleware"
 
 // =============================================================================
 // PERIPHERY REWARDS PIPELINE EVENTS
@@ -283,6 +295,8 @@ import {
   PositionLot,
   Transaction,
   ClaimRequest,
+  WithdrawalEpoch,
+  WithdrawalEpochEvent,
   User,
   TokenPrice,
   UpkeepAction,
@@ -395,7 +409,8 @@ import {
 import {
   getTokenPriceUsd,
   convertToUsd,
-  getOrCreateTokenPrice
+  getOrCreateTokenPrice,
+  registerChainlinkFeed
 } from "./helpers/pricing"
 
 import {
@@ -414,6 +429,7 @@ import {
   snapshotVaultDayData,
   updateVaultDayDataApy,
   updateVaultApyMetrics,
+  updateVaultNetApyMetrics,
   getOrCreateProtocolDeployment,
   getOrCreateVaultDeployment,
   syncVaultDeploymentFromVault,
@@ -429,6 +445,7 @@ import {
   getOrCreateUser,
   updateUserAggregates
 } from "./helpers/entities"
+import { addUsd, subtractUsd } from "./helpers/nullableUsd"
 
 import {
   mapVaultUpkeepOp,
@@ -664,9 +681,9 @@ export function handleDeposit(event: DepositEvent): void {
   let dayId = event.block.timestamp.toI32() / SECONDS_PER_DAY
   let dayData = getOrCreateVaultDayData(vault, event.block.timestamp)
   dayData.depositsAssets = dayData.depositsAssets.plus(event.params.assets)
-  dayData.depositsUsd = dayData.depositsUsd.plus(assetsUsd)
+  dayData.depositsUsd = addUsd(dayData.depositsUsd, assetsUsd)
   dayData.netFlowAssets = dayData.depositsAssets.minus(dayData.withdrawalsAssets)
-  dayData.netFlowUsd = dayData.depositsUsd.minus(dayData.withdrawalsUsd)
+  dayData.netFlowUsd = subtractUsd(dayData.depositsUsd, dayData.withdrawalsUsd)
   dayData.depositCount = dayData.depositCount + 1
   updateVaultDayDataApy(dayData)
   dayData.save()
@@ -679,9 +696,9 @@ export function handleDeposit(event: DepositEvent): void {
 
   position.shares = position.shares.plus(event.params.shares)
   position.totalDepositedAssets = position.totalDepositedAssets.plus(event.params.assets)
-  position.totalDepositedUsd = position.totalDepositedUsd.plus(assetsUsd)
+  position.totalDepositedUsd = addUsd(position.totalDepositedUsd, assetsUsd)
   position.netDepositedAssets = position.totalDepositedAssets.minus(position.totalWithdrawnAssets)
-  position.netDepositedUsd = position.totalDepositedUsd.minus(position.totalWithdrawnUsd)
+  position.netDepositedUsd = subtractUsd(position.totalDepositedUsd, position.totalWithdrawnUsd)
   position.lastDepositAt = event.block.timestamp
   position.depositCount = position.depositCount + 1
   position.updatedAt = event.block.timestamp
@@ -720,7 +737,7 @@ export function handleDeposit(event: DepositEvent): void {
   if (isNewUser) {
     user.totalPositions = user.totalPositions + 1
   }
-  user.totalAssetsUsd = user.totalAssetsUsd.plus(assetsUsd)
+  user.totalAssetsUsd = addUsd(user.totalAssetsUsd, assetsUsd)
   updateUserAggregates(user, event.block)
 
   let depositTx = createTransaction(
@@ -737,13 +754,15 @@ export function handleDeposit(event: DepositEvent): void {
 
   let factoryEntity = VaultFactory.load(vault.factory!)
   if (factoryEntity != null) {
-    factoryEntity.totalTvlUsd = factoryEntity.totalTvlUsd.plus(assetsUsd)
+    factoryEntity.totalTvlUsd = addUsd(factoryEntity.totalTvlUsd, assetsUsd)
+    factoryEntity.priceStatus = assetsUsd === null ? "MISSING" : vault.priceStatus
     factoryEntity.save()
   }
 
   let protocolEntity = Protocol.load("protocol-" + chainId.toString())
   if (protocolEntity != null) {
-    protocolEntity.totalTvlUsd = protocolEntity.totalTvlUsd.plus(assetsUsd)
+    protocolEntity.totalTvlUsd = addUsd(protocolEntity.totalTvlUsd, assetsUsd)
+    protocolEntity.priceStatus = assetsUsd === null ? "MISSING" : vault.priceStatus
     protocolEntity.updatedAt = event.block.timestamp
     protocolEntity.save()
   }
@@ -769,9 +788,9 @@ export function handleWithdraw(event: WithdrawEvent): void {
   let dayId = event.block.timestamp.toI32() / SECONDS_PER_DAY
   let dayData = getOrCreateVaultDayData(vault, event.block.timestamp)
   dayData.withdrawalsAssets = dayData.withdrawalsAssets.plus(event.params.assets)
-  dayData.withdrawalsUsd = dayData.withdrawalsUsd.plus(assetsUsd)
+  dayData.withdrawalsUsd = addUsd(dayData.withdrawalsUsd, assetsUsd)
   dayData.netFlowAssets = dayData.depositsAssets.minus(dayData.withdrawalsAssets)
-  dayData.netFlowUsd = dayData.depositsUsd.minus(dayData.withdrawalsUsd)
+  dayData.netFlowUsd = subtractUsd(dayData.depositsUsd, dayData.withdrawalsUsd)
   dayData.withdrawCount = dayData.withdrawCount + 1
   updateVaultDayDataApy(dayData)
   dayData.save()
@@ -792,11 +811,11 @@ export function handleWithdraw(event: WithdrawEvent): void {
 
   position.shares = position.shares.minus(event.params.shares)
   position.totalWithdrawnAssets = position.totalWithdrawnAssets.plus(event.params.assets)
-  position.totalWithdrawnUsd = position.totalWithdrawnUsd.plus(assetsUsd)
+  position.totalWithdrawnUsd = addUsd(position.totalWithdrawnUsd, assetsUsd)
   position.netDepositedAssets = position.totalDepositedAssets.minus(position.totalWithdrawnAssets)
-  position.netDepositedUsd = position.totalDepositedUsd.minus(position.totalWithdrawnUsd)
+  position.netDepositedUsd = subtractUsd(position.totalDepositedUsd, position.totalWithdrawnUsd)
   position.realizedPnlAssets = position.realizedPnlAssets.plus(fifoResult.realizedPnlAssets)
-  position.realizedPnlUsd = position.realizedPnlUsd.plus(fifoResult.realizedPnlUsd)
+  position.realizedPnlUsd = addUsd(position.realizedPnlUsd, fifoResult.realizedPnlUsd)
   position.lastWithdrawAt = event.block.timestamp
   position.withdrawCount = position.withdrawCount + 1
   position.updatedAt = event.block.timestamp
@@ -811,8 +830,8 @@ export function handleWithdraw(event: WithdrawEvent): void {
   positionDayData.save()
 
   let user = getOrCreateUser(event.params.owner, event.block)
-  user.totalAssetsUsd = user.totalAssetsUsd.minus(assetsUsd)
-  user.totalRealizedPnlUsd = user.totalRealizedPnlUsd.plus(fifoResult.realizedPnlUsd)
+  user.totalAssetsUsd = subtractUsd(user.totalAssetsUsd, assetsUsd)
+  user.totalRealizedPnlUsd = addUsd(user.totalRealizedPnlUsd, fifoResult.realizedPnlUsd)
   updateUserAggregates(user, event.block)
 
   let withdrawTx = createTransaction(
@@ -829,13 +848,15 @@ export function handleWithdraw(event: WithdrawEvent): void {
 
   let factoryEntity = VaultFactory.load(vault.factory!)
   if (factoryEntity != null) {
-    factoryEntity.totalTvlUsd = factoryEntity.totalTvlUsd.minus(assetsUsd)
+    factoryEntity.totalTvlUsd = subtractUsd(factoryEntity.totalTvlUsd, assetsUsd)
+    factoryEntity.priceStatus = assetsUsd === null ? "MISSING" : vault.priceStatus
     factoryEntity.save()
   }
 
   let protocolEntity = Protocol.load("protocol-" + chainId.toString())
   if (protocolEntity != null) {
-    protocolEntity.totalTvlUsd = protocolEntity.totalTvlUsd.minus(assetsUsd)
+    protocolEntity.totalTvlUsd = subtractUsd(protocolEntity.totalTvlUsd, assetsUsd)
+    protocolEntity.priceStatus = assetsUsd === null ? "MISSING" : vault.priceStatus
     protocolEntity.updatedAt = event.block.timestamp
     protocolEntity.save()
   }
@@ -866,8 +887,6 @@ export function handleTransfer(event: TransferEvent): void {
   if (vault.totalSupply.gt(ZERO_BI)) {
     assets = shares.times(vault.totalAssets).div(vault.totalSupply)
   }
-  let assetsUsd = convertToUsd(assets, vault.assetDecimals, assetPrice)
-
   let fromPosition = getOrCreateUserPosition(from, vault, event.block)
   fromPosition.shares = fromPosition.shares.minus(shares)
   fromPosition.updatedAt = event.block.timestamp
@@ -938,7 +957,347 @@ export function handleTransfer(event: TransferEvent): void {
 }
 
 // =============================================================================
-// CLAIM QUEUE EVENT HANDLERS
+// EPOCHED WITHDRAWAL QUEUE EVENT HANDLERS
+// =============================================================================
+
+function getOrCreateWithdrawalEpoch(
+  vault: Vault,
+  epochId: BigInt,
+  block: ethereum.Block
+): WithdrawalEpoch {
+  let id = vault.id + "-epoch-" + epochId.toString()
+  let epoch = WithdrawalEpoch.load(id)
+  if (epoch == null) {
+    let epochDuration = vault.epochDuration.gt(ZERO_BI)
+      ? vault.epochDuration
+      : BigInt.fromI32(86400)
+    epoch = new WithdrawalEpoch(id)
+    epoch.vault = vault.id
+    epoch.chainId = vault.chainId
+    epoch.epochId = epochId
+    epoch.state = "OPEN"
+    epoch.openedAt = block.timestamp
+    epoch.epochDuration = epochDuration
+    epoch.epochClosesAt = block.timestamp.plus(epochDuration)
+    epoch.totalGrossShares = ZERO_BI
+    epoch.totalNetShares = ZERO_BI
+    epoch.totalNetAssets = ZERO_BI
+    epoch.totalFeeShares = ZERO_BI
+    epoch.claimCount = ZERO_BI
+    epoch.cancelledClaimCount = ZERO_BI
+    epoch.claimedCount = ZERO_BI
+    epoch.claimedAssets = ZERO_BI
+    epoch.updatedAt = block.timestamp
+  }
+  return epoch
+}
+
+function getOrCreateEpochClaim(
+  vault: Vault,
+  epoch: WithdrawalEpoch,
+  claimId: BigInt,
+  user: Address,
+  block: ethereum.Block
+): ClaimRequest {
+  let id = epoch.id + "-claim-" + claimId.toString()
+  let claim = ClaimRequest.load(id)
+  if (claim == null) {
+    claim = new ClaimRequest(id)
+    claim.vault = vault.id
+    claim.epoch = epoch.id
+    claim.user = user
+    claim.chainId = vault.chainId
+    claim.claimId = claimId
+    claim.epochId = epoch.epochId
+    claim.shares = ZERO_BI
+    claim.grossShares = ZERO_BI
+    claim.netShares = ZERO_BI
+    claim.feeShares = ZERO_BI
+    claim.assets = ZERO_BI
+    claim.assetsEstimated = ZERO_BI
+    claim.isImmediate = false
+    claim.status = "PENDING"
+    claim.requestedAt = block.timestamp
+    claim.requestTxHash = Bytes.empty()
+  }
+  return claim
+}
+
+function createWithdrawalEpochEvent(
+  event: ethereum.Event,
+  vault: Vault,
+  epoch: WithdrawalEpoch,
+  eventType: string
+): WithdrawalEpochEvent {
+  let entity = new WithdrawalEpochEvent(createEventId(event.transaction.hash, event.logIndex))
+  entity.vault = vault.id
+  entity.epoch = epoch.id
+  entity.chainId = vault.chainId
+  entity.epochId = epoch.epochId
+  entity.eventType = eventType
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  return entity
+}
+
+export function handleEpochOpened(event: EpochOpenedEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  let epochDuration = vault.epochDuration.gt(ZERO_BI)
+    ? vault.epochDuration
+    : BigInt.fromI32(86400)
+  epoch.state = "OPEN"
+  epoch.openedAt = event.params.openedAt
+  epoch.epochDuration = epochDuration
+  epoch.epochClosesAt = event.params.openedAt.plus(epochDuration)
+  epoch.updatedAt = event.block.timestamp
+  epoch.save()
+
+  let entity = createWithdrawalEpochEvent(event, vault, epoch, "OPENED")
+  entity.save()
+}
+
+export function handleEpochWithdrawalRequested(event: EpochWithdrawalRequestedEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  let estimatedAssets = ZERO_BI
+  if (vault.totalSupply.gt(ZERO_BI)) {
+    estimatedAssets = event.params.netShares.times(vault.totalAssets).div(vault.totalSupply)
+  }
+
+  let claim = getOrCreateEpochClaim(
+    vault, epoch, event.params.claimId, event.params.user, event.block
+  )
+  claim.user = event.params.user
+  claim.shares = event.params.grossShares
+  claim.grossShares = event.params.grossShares
+  claim.netShares = event.params.netShares
+  claim.feeShares = event.params.feeShares
+  claim.assets = estimatedAssets
+  claim.assetsEstimated = estimatedAssets
+  claim.status = "PENDING"
+  claim.requestedAt = event.block.timestamp
+  claim.requestTxHash = event.transaction.hash
+  claim.save()
+
+  epoch.totalGrossShares = epoch.totalGrossShares.plus(event.params.grossShares)
+  epoch.totalNetShares = epoch.totalNetShares.plus(event.params.netShares)
+  epoch.totalFeeShares = epoch.totalFeeShares.plus(event.params.feeShares)
+  epoch.claimCount = epoch.claimCount.plus(BigInt.fromI32(1))
+  epoch.updatedAt = event.block.timestamp
+  epoch.save()
+
+  let entity = createWithdrawalEpochEvent(event, vault, epoch, "WITHDRAWAL_REQUESTED")
+  entity.claimId = event.params.claimId
+  entity.user = event.params.user
+  entity.grossShares = event.params.grossShares
+  entity.netShares = event.params.netShares
+  entity.feeShares = event.params.feeShares
+  entity.save()
+
+  let tx = createTransaction(
+    event.transaction.hash,
+    event.logIndex,
+    "CLAIM_REQUEST",
+    vault,
+    event.params.user,
+    event.params.grossShares,
+    estimatedAssets,
+    event.block
+  )
+  setTransactionClaimId(tx, event.params.claimId)
+  vault.transactionCount = vault.transactionCount + 1
+  vault.save()
+}
+
+export function handleEpochWithdrawalCancelled(event: EpochWithdrawalCancelledEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  let claim = getOrCreateEpochClaim(
+    vault, epoch, event.params.claimId, event.params.user, event.block
+  )
+  claim.status = "CANCELLED"
+  claim.cancelledAt = event.block.timestamp
+  claim.cancelTxHash = event.transaction.hash
+  claim.save()
+
+  if (epoch.totalGrossShares.ge(claim.grossShares)) {
+    epoch.totalGrossShares = epoch.totalGrossShares.minus(claim.grossShares)
+  }
+  if (epoch.totalNetShares.ge(claim.netShares)) {
+    epoch.totalNetShares = epoch.totalNetShares.minus(claim.netShares)
+  }
+  if (epoch.totalFeeShares.ge(claim.feeShares)) {
+    epoch.totalFeeShares = epoch.totalFeeShares.minus(claim.feeShares)
+  }
+  epoch.cancelledClaimCount = epoch.cancelledClaimCount.plus(BigInt.fromI32(1))
+  epoch.updatedAt = event.block.timestamp
+  epoch.save()
+
+  let entity = createWithdrawalEpochEvent(event, vault, epoch, "WITHDRAWAL_CANCELLED")
+  entity.claimId = event.params.claimId
+  entity.user = event.params.user
+  entity.sharesReturned = event.params.sharesReturned
+  entity.save()
+
+  let tx = createTransaction(
+    event.transaction.hash,
+    event.logIndex,
+    "CLAIM_CANCEL",
+    vault,
+    event.params.user,
+    event.params.sharesReturned,
+    ZERO_BI,
+    event.block
+  )
+  setTransactionClaimId(tx, event.params.claimId)
+  vault.transactionCount = vault.transactionCount + 1
+  vault.save()
+}
+
+export function handleEpochClosed(event: EpochClosedEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  epoch.state = "CLOSED"
+  epoch.closedAt = event.block.timestamp
+  epoch.ppsAtClose = event.params.ppsAtClose
+  epoch.totalNetShares = event.params.totalNetShares
+  epoch.totalNetAssets = event.params.totalNetAssets
+  epoch.totalFeeShares = event.params.totalFeeShares
+  epoch.totalGrossShares = event.params.totalNetShares.plus(event.params.totalFeeShares)
+  epoch.updatedAt = event.block.timestamp
+  epoch.save()
+
+  let entity = createWithdrawalEpochEvent(event, vault, epoch, "CLOSED")
+  entity.ppsAtClose = event.params.ppsAtClose
+  entity.totalNetShares = event.params.totalNetShares
+  entity.totalNetAssets = event.params.totalNetAssets
+  entity.totalFeeShares = event.params.totalFeeShares
+  entity.save()
+}
+
+export function handleEpochFundAttempt(event: EpochFundAttemptEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  epoch.lastFundingNeeded = event.params.needed
+  epoch.lastHotBefore = event.params.hotBefore
+  epoch.lastHotAfter = event.params.hotAfter
+  epoch.updatedAt = event.block.timestamp
+  epoch.save()
+
+  let entity = createWithdrawalEpochEvent(event, vault, epoch, "FUND_ATTEMPT")
+  entity.needed = event.params.needed
+  entity.hotBefore = event.params.hotBefore
+  entity.hotAfter = event.params.hotAfter
+  entity.save()
+}
+
+export function handleEpochFundSkipped(event: EpochFundSkippedEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  epoch.updatedAt = event.block.timestamp
+  epoch.save()
+
+  let entity = createWithdrawalEpochEvent(event, vault, epoch, "FUND_SKIPPED")
+  entity.cursorBefore = event.params.cursorBefore
+  entity.cursorAfter = event.params.cursorAfter
+  entity.save()
+}
+
+export function handleEpochFundingShortfall(event: EpochFundingShortfallEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  epoch.lastFundingNeeded = event.params.needed
+  epoch.lastFreeLiquidity = event.params.freeLiquidity
+  epoch.lastShortfall = event.params.shortfall
+  epoch.updatedAt = event.block.timestamp
+  epoch.save()
+
+  let entity = createWithdrawalEpochEvent(event, vault, epoch, "FUNDING_SHORTFALL")
+  entity.needed = event.params.needed
+  entity.freeLiquidity = event.params.freeLiquidity
+  entity.shortfall = event.params.shortfall
+  entity.save()
+}
+
+export function handleQueueEpochFunded(event: QueueEpochFundedEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  epoch.state = "FUNDED"
+  epoch.fundedAt = event.block.timestamp
+  epoch.totalNetAssets = event.params.totalNetAssets
+  epoch.lastShortfall = ZERO_BI
+  epoch.updatedAt = event.block.timestamp
+  epoch.save()
+
+  let entity = createWithdrawalEpochEvent(event, vault, epoch, "FUNDED")
+  entity.totalNetAssets = event.params.totalNetAssets
+  entity.save()
+}
+
+export function handleEpochAssetsClaimed(event: EpochAssetsClaimedEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  let claim = getOrCreateEpochClaim(
+    vault, epoch, event.params.claimId, event.params.user, event.block
+  )
+  claim.netShares = event.params.netShares
+  claim.assets = event.params.assets
+  claim.assetsReceived = event.params.assets
+  claim.status = "SETTLED"
+  claim.settledAt = event.block.timestamp
+  claim.settleTxHash = event.transaction.hash
+  claim.save()
+
+  epoch.claimedCount = epoch.claimedCount.plus(BigInt.fromI32(1))
+  epoch.claimedAssets = epoch.claimedAssets.plus(event.params.assets)
+  epoch.updatedAt = event.block.timestamp
+  epoch.save()
+
+  let entity = createWithdrawalEpochEvent(event, vault, epoch, "ASSETS_CLAIMED")
+  entity.claimId = event.params.claimId
+  entity.user = event.params.user
+  entity.assets = event.params.assets
+  entity.netShares = event.params.netShares
+  entity.save()
+
+  let tx = createTransaction(
+    event.transaction.hash,
+    event.logIndex,
+    "CLAIM",
+    vault,
+    event.params.user,
+    claim.grossShares,
+    event.params.assets,
+    event.block
+  )
+  setTransactionReceiver(tx, event.params.user)
+  setTransactionClaimId(tx, event.params.claimId)
+  vault.transactionCount = vault.transactionCount + 1
+  vault.save()
+}
+
+// =============================================================================
+// LEGACY QUEUE EVENT HANDLERS (kept for older, undeployed network manifests)
 // =============================================================================
 
 export function handleClaimRequested(event: ClaimRequestedEvent): void {
@@ -1419,6 +1778,8 @@ export function handlePerfParamsAccepted(event: PerfParamsAcceptedEvent): void {
   let vaultId = getVaultId(event.address)
   let vault = Vault.load(vaultId)
   if (vault != null) {
+    vault.perfRateX = event.params.perfRateX
+    updateVaultNetApyMetrics(vault)
     vault.updatedAt = event.block.timestamp
     vault.save()
   }
@@ -1437,6 +1798,8 @@ export function handlePerfParamsSet(event: PerfParamsSetEvent): void {
   let vaultId = getVaultId(event.address)
   let vault = Vault.load(vaultId)
   if (vault != null) {
+    vault.perfRateX = event.params.perfRateX
+    updateVaultNetApyMetrics(vault)
     vault.updatedAt = event.block.timestamp
     vault.save()
   }
@@ -1510,7 +1873,7 @@ export function handleReserveTargetRestored(event: ReserveTargetRestoredEvent): 
   snapshotVaultHourData(vault, event.block)
 }
 
-export function handleEpochRolled(event: EpochRolledEvent): void {
+export function handleWithdrawalCapEpochRolled(event: WithdrawalCapEpochRolledEvent): void {
   let vaultId = getVaultId(event.address)
   let vault = Vault.load(vaultId)
   if (vault == null) return
@@ -1753,26 +2116,6 @@ export function handleAuthorizedSealerSet(event: AuthorizedSealerSetEvent): void
     vault.updatedAt = event.block.timestamp
     vault.save()
   }
-}
-
-export function handleSealPrepared(event: SealPreparedEvent): void {
-  let vaultId = getVaultId(event.address)
-  let vault = Vault.load(vaultId)
-  if (vault == null) return
-
-  let chainId = getChainIdFromNetwork(dataSource.network())
-  let id = createEventId(event.transaction.hash, event.logIndex)
-
-  let sealEvent = new SealEvent(id)
-  sealEvent.vault = vaultId
-  sealEvent.chainId = chainId
-  sealEvent.type = "PREPARED"
-  sealEvent.sealer = event.params.sealer
-  sealEvent.configHash = event.params.configHash
-  sealEvent.timestamp = event.block.timestamp
-  sealEvent.blockNumber = event.block.number
-  sealEvent.txHash = event.transaction.hash
-  sealEvent.save()
 }
 
 export function handleSystemSealed(event: SystemSealedEvent): void {
@@ -2258,6 +2601,7 @@ export function handleWarmAdapterApproved(event: WarmAdapterApprovedEvent): void
   adapterEvent.chainId = chainId
   adapterEvent.type = "APPROVED"
   adapterEvent.adapter = event.params.adapter
+  adapterEvent.cap = event.params.cap
   adapterEvent.timestamp = event.block.timestamp
   adapterEvent.blockNumber = event.block.number
   adapterEvent.txHash = event.transaction.hash
@@ -2822,6 +3166,14 @@ export function handlePerfParamsUpdated(event: PerfParamsUpdatedEvent): void {
   feeEvent.blockNumber = event.block.number
   feeEvent.txHash = event.transaction.hash
   feeEvent.save()
+
+  let vault = Vault.load(vaultId)
+  if (vault != null) {
+    vault.perfRateX = event.params.perfRateX
+    updateVaultNetApyMetrics(vault)
+    vault.updatedAt = event.block.timestamp
+    vault.save()
+  }
 }
 
 export function handleOpsReserveTargetSubmitted(event: OpsReserveTargetSubmittedEvent): void {
@@ -3356,6 +3708,20 @@ export function handleUpkeepPerformed(event: UpkeepPerformedEvent): void {
 // GLOBAL CONFIG EVENT HANDLERS (Oracle Registry)
 // =============================================================================
 
+function registerAssetFeedFromMiddleware(
+  asset: Address,
+  middlewareAddress: Address,
+  chainId: i32,
+  block: ethereum.Block
+): void {
+  if (middlewareAddress.equals(Address.zero())) return
+  let middleware = PriceOracleMiddleware.bind(middlewareAddress)
+  let feedResult = middleware.try_getFeed(asset)
+  if (!feedResult.reverted && !feedResult.value.equals(Address.zero())) {
+    registerChainlinkFeed(asset, chainId, feedResult.value, block)
+  }
+}
+
 export function handleDefaultOracleConfigSet(event: DefaultOracleConfigSetEvent): void {
   let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
   let evt = new OracleRegistryEvent(id)
@@ -3399,6 +3765,13 @@ export function handleAssetOracleConfigSet(event: AssetOracleConfigSetEvent): vo
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  registerAssetFeedFromMiddleware(
+    event.params.asset,
+    event.params.oracle,
+    evt.chainId,
+    event.block
+  )
 }
 
 export function handleVaultOracleOverrideSet(event: VaultOracleOverrideSetEvent): void {
@@ -3417,6 +3790,71 @@ export function handleVaultOracleOverrideSet(event: VaultOracleOverrideSetEvent)
   evt.txHash = event.transaction.hash
 
   evt.save()
+
+  let vault = Vault.load(getVaultId(event.params.vault))
+  if (vault !== null) {
+    registerAssetFeedFromMiddleware(
+      Address.fromBytes(vault.asset),
+      event.params.oracle,
+      evt.chainId,
+      event.block
+    )
+  }
+}
+
+function refreshEffectiveVaultConfig(
+  globalConfigAddress: Address,
+  vaultAddress: Address,
+  block: ethereum.Block
+): void {
+  let vault = Vault.load(getVaultId(vaultAddress))
+  if (vault == null) return
+
+  let config = GlobalConfigContract.bind(globalConfigAddress)
+  let limitsResult = config.try_getDepositLimits(vaultAddress)
+  if (!limitsResult.reverted) {
+    vault.depositCap = limitsResult.value.vaultDepositCap
+    vault.userDepositCap = limitsResult.value.userDepositCap
+    vault.minimumDeposit = limitsResult.value.minDepositAmount
+    if (vault.depositCap.gt(vault.totalAssets)) {
+      vault.remainingDepositCapacity = vault.depositCap.minus(vault.totalAssets)
+    } else {
+      vault.remainingDepositCapacity = ZERO_BI
+    }
+  }
+
+  let queueResult = config.try_getQueueParams(vaultAddress)
+  if (!queueResult.reverted) {
+    vault.epochDuration = queueResult.value.epochDuration
+  }
+
+  let feeResult = config.try_getVaultFees(vaultAddress)
+  if (!feeResult.reverted) {
+    vault.depositFeeBps = feeResult.value.getDBps()
+    vault.withdrawFeeBps = feeResult.value.getWBps()
+    vault.performanceFeeBps = feeResult.value.getPBps()
+  }
+
+  vault.updatedAt = block.timestamp
+  vault.save()
+}
+
+export function handleVaultOverrideSet(event: VaultOverrideSetEvent): void {
+  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  let evt = new OracleRegistryEvent(id)
+  evt.chainId = getChainIdFromNetwork(dataSource.network())
+  evt.type = "OVERRIDE_SET"
+  evt.asset = null
+  evt.vault = event.params.vault
+  evt.oracle = Address.zero()
+  evt.maxStaleness = ZERO_BI
+  evt.paramType = event.params.paramType
+  evt.timestamp = event.block.timestamp
+  evt.blockNumber = event.block.number
+  evt.txHash = event.transaction.hash
+  evt.save()
+
+  refreshEffectiveVaultConfig(event.address, event.params.vault, event.block)
 }
 
 // SG-12 — VaultOverrideCleared(address indexed vault, ParamType paramType)
@@ -3437,6 +3875,22 @@ export function handleVaultOverrideCleared(event: VaultOverrideClearedEvent): vo
   evt.txHash = event.transaction.hash
 
   evt.save()
+  refreshEffectiveVaultConfig(event.address, event.params.vault, event.block)
+
+  let vault = Vault.load(getVaultId(event.params.vault))
+  if (vault !== null) {
+    let asset = Address.fromBytes(vault.asset)
+    let config = GlobalConfigContract.bind(event.address)
+    let oracleResult = config.try_oracleConfigFor(asset, event.params.vault)
+    if (!oracleResult.reverted) {
+      registerAssetFeedFromMiddleware(
+        asset,
+        oracleResult.value.getOracle(),
+        evt.chainId,
+        event.block
+      )
+    }
+  }
 }
 
 // =============================================================================
@@ -4131,7 +4585,7 @@ export function handleRewardsPayoutManagerUpdated(event: ethereum.Event): void {
   componentUpdate.save()
 }
 
-export function handleRewardSharesMinted(event: ethereum.Event): void {
+export function handleRewardSharesPaid(event: ethereum.Event): void {
   // Informational — no entity update needed beyond transaction logging
 }
 

@@ -1,17 +1,18 @@
-# Multyr Vault Subgraph v3.1
+# Multyr Vault Subgraph
 
 Subgraph for indexing Multyr vaults across Arbitrum, Base, and Ethereum.
 
 **Studio**: https://thegraph.com/studio/subgraph/multyr-subgraph
 **Slug**: `multyr-subgraph`
-**Current deploy**: v3.1.0
+**Last documented Studio release**: v3.1.0 (the current worktree is not published)
 
 ## Features
 
 - **ERC-4626 tracking**: Deposits, Withdrawals, Transfers, ForceWithdraw
-- **APY**: canonical sharePrice (decimals-aware), 30-day lookback, 1d/7d/30d averages
+- **Epoched exits**: request, cancel, close, fund attempts/shortfalls, funding, and claims
+- **APY**: canonical sharePrice (decimals-aware), loss-inclusive gross and net 1d/7d/30d averages
 - **FIFO Cost Basis**: position lots, realized/unrealized P&L
-- **USD Pricing**: Chainlink with staleness tracking
+- **USD Pricing**: Chainlink feed registry, staleness tracking, and nullable missing-price semantics
 - **Ops Dashboard**: ProtocolDeployment, VaultDeployment, StrategyDeployment wiring
 - **Automation**: VaultUpkeep, StrategyUpkeep, FeeCollectorUpkeep events + bindings
 - **Vault Lifecycle**: VaultFactory v2 with deprecateVault, setVaultStatus, removeVault
@@ -49,21 +50,19 @@ Subgraph for indexing Multyr vaults across Arbitrum, Base, and Ethereum.
     └── bootstrap-manifest.json # Canonical values for ops console fallback
 ```
 
-## Production Addresses (Arbitrum)
+## Active Arbitrum Test Deployment
 
-| Datasource | Address | Status |
-|-----------|---------|--------|
-| VaultFactory v2 | `0x4201311F1333843fb92a30c687B9C3824E53CA1d` | Active |
-| VaultUpkeep | `0xe5c2ba17bf294b70c21498fcc74975c86d380c9d` | Active |
-| GlobalConfig | `0x4A6a4E1D3120Bd016C96cf035d3FAB99D4a0c6Ce` | Active |
-| StrategyUpkeep v4 | `0x9D2c6AF78F57fEAe4322e86E5952Da4e414ada82` | Active |
-| FeeCollectorUpkeep | `0x5D4e0b9AA48234bC2Cb10b0A2f97430A4a9a8EA8` | Active |
-| OpsCollector | `0x78Db3575A3477adfEd19F74142b7ed1a592f80D1` | Active |
-| FeeDistributor | `0x855018a8BCe730ed528b426E78e9A5b28fAb457E` | Active |
-| EpochPayout | `0x15F5619256db081c1694f6966e25d1B234D2D897` | Active |
-| ReferralBinding | `0x864281D1A7b0E7d0071ea6AEC43b0fE0D7106b1b` | Active |
-| PartnerRegistry | `0xe66f441835c9Fa8833E5Fd0a67eB42Ef0a83a9e7` | Active |
-| DepositRouter | `0x6f051953f2f9b1bb4fe1b6ad537877af01a2e369` | Active |
+| Component | Address | Start block / indexing |
+|-----------|---------|------------------------|
+| VaultFactory | `0x27b5B83E77044817310c14CF62D96be606f79436` | `503229720` |
+| CoreVault | `0x4575Ec0dD1ED08FD4F426665E5B56442594189bb` | dynamic template from factory registration `503229777` |
+| GlobalConfig | `0x8fE1cbc7fC2A469B5b5904EA5e5C4D09c583eDD6` | `503229727` |
+| VaultUpkeep | `0x8672921E03c9995AE1Dbe234A7a08C327163883e` | `503229824` |
+| StrategyRouter | `0x8EeF3Cb022B0d70Fe70a4CA6759C977e5718b8e7` | dynamic template from vault wiring |
+| USDC strategy | `0x2ca30120C828Fc136d348234f7e68116572DD83E` | dynamic template from router registration |
+| StrategyUpkeep | `0xd32a464df8e90D8aa9Bc290C4635eCE8D5362550` | `503230946` |
+
+The rewards/referral periphery, incentives engine, and FeeCollectorUpkeep are not deployed in this phase and remain dormant in the Arbitrum manifest. The complete address and exact-block inventory is in `deployments/arbitrum/`.
 
 Base and Ethereum use placeholder addresses (not yet deployed).
 
@@ -112,7 +111,7 @@ npx graph deploy multyr-subgraph arbitrum/subgraph.yaml --studio --version-label
 
 ## Bootstrap Registry
 
-For vault v4 on Arbitrum, `queueModule` and `adminModule` are not recoverable from the subgraph (deploy-time event emitted before template creation). See [docs/bootstrap-registry.md](docs/bootstrap-registry.md) and [docs/bootstrap-manifest.json](docs/bootstrap-manifest.json).
+Older vault v4 deployments may need a bootstrap fallback when wiring events predate template creation. See [docs/bootstrap-registry.md](docs/bootstrap-registry.md) and [docs/bootstrap-manifest.json](docs/bootstrap-manifest.json). The active EOA test deployment registers the vault before wiring, so its wiring events are indexable normally.
 
 The ops console should:
 1. Read `VaultDeployment` from subgraph (primary source)

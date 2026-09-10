@@ -9,11 +9,10 @@ dataSources:
     name: VaultFactory
     network: base
     source:
-      # TODO: Replace with actual deployed factory address
-      address: "0xfadfd2068d2ca0151229edddff5056b71e1674cc"
+      # NOT DEPLOYED — intentionally dormant until this chain has an inventory.
+      address: "0x0000000000000000000000000000000000000001"
       abi: VaultFactory
-      # TODO: Set to actual deployment block
-      startBlock: 428672781
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -50,11 +49,10 @@ dataSources:
     name: VaultUpkeep
     network: base
     source:
-      # TODO: Replace with actual deployed VaultUpkeep address on Arbitrum
+      # NOT DEPLOYED — intentionally dormant.
       address: "0x0000000000000000000000000000000000000001"
       abi: VaultUpkeep
-      # TODO: Set to actual deployment block
-      startBlock: 0
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -67,8 +65,6 @@ dataSources:
       eventHandlers:
         - event: UpkeepPerformed(uint8,uint256,bool)
           handler: handleUpkeepPerformed
-        - event: RealizeForQueueFailed(uint256,bytes)
-          handler: handleRealizeForQueueFailed
         - event: DeployRealizeCooldownSet(uint64)
           handler: handleDeployRealizeCooldownSet
         - event: ReconcileHighThresholdSet(uint256)
@@ -81,11 +77,10 @@ dataSources:
     name: GlobalConfig
     network: base
     source:
-      # TODO: Replace with actual deployed GlobalConfig address
-      address: "0x0000000000000000000000000000000000000000"
+      # NOT DEPLOYED — intentionally dormant.
+      address: "0x0000000000000000000000000000000000000001"
       abi: GlobalConfig
-      # TODO: Set to actual deployment block
-      startBlock: 0
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -95,6 +90,8 @@ dataSources:
       abis:
         - name: GlobalConfig
           file: ./abis/GlobalConfig.json
+        - name: PriceOracleMiddleware
+          file: ./abis/PriceOracleMiddleware.json
       eventHandlers:
         - event: DefaultOracleConfigSet(indexed address,uint256)
           handler: handleDefaultOracleConfigSet
@@ -102,6 +99,10 @@ dataSources:
           handler: handleAssetOracleConfigSet
         - event: VaultOracleOverrideSet(indexed address,indexed address,uint256)
           handler: handleVaultOracleOverrideSet
+        - event: VaultOverrideSet(indexed address,uint8)
+          handler: handleVaultOverrideSet
+        - event: VaultOverrideCleared(indexed address,uint8)
+          handler: handleVaultOverrideCleared
       file: ./src/mappings.ts
 
   # =========================================================================
@@ -117,11 +118,10 @@ dataSources:
     name: OpsCollector
     network: base
     source:
-      # TODO: Replace with actual deployed OpsCollector address
-      address: "0x0000000000000000000000000000000000000000"
+      # NOT DEPLOYED — intentionally dormant.
+      address: "0x0000000000000000000000000000000000000001"
       abi: OpsCollector
-      # TODO: Set to actual deployment block
-      startBlock: 0
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -148,11 +148,10 @@ dataSources:
     name: FeeDistributor
     network: base
     source:
-      # TODO: Replace with actual deployed FeeDistributor address
-      address: "0x0000000000000000000000000000000000000000"
+      # NOT DEPLOYED — intentionally dormant.
+      address: "0x0000000000000000000000000000000000000001"
       abi: FeeDistributor
-      # TODO: Set to actual deployment block
-      startBlock: 0
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -187,11 +186,10 @@ dataSources:
     name: EpochPayout
     network: base
     source:
-      # TODO: Replace with actual deployed EpochPayout address
-      address: "0x0000000000000000000000000000000000000000"
+      # NOT DEPLOYED — intentionally dormant.
+      address: "0x0000000000000000000000000000000000000001"
       abi: EpochPayout
-      # TODO: Set to actual deployment block
-      startBlock: 0
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -213,11 +211,10 @@ dataSources:
     name: ReferralBinding
     network: base
     source:
-      # TODO: Replace with actual deployed ReferralBinding address
-      address: "0x0000000000000000000000000000000000000000"
+      # NOT DEPLOYED — intentionally dormant.
+      address: "0x0000000000000000000000000000000000000001"
       abi: ReferralBinding
-      # TODO: Set to actual deployment block
-      startBlock: 0
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -239,11 +236,10 @@ dataSources:
     name: PartnerRegistry
     network: base
     source:
-      # TODO: Replace with actual deployed PartnerRegistry address
-      address: "0x0000000000000000000000000000000000000000"
+      # NOT DEPLOYED — intentionally dormant.
+      address: "0x0000000000000000000000000000000000000001"
       abi: PartnerRegistry
-      # TODO: Set to actual deployment block
-      startBlock: 0
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -266,11 +262,10 @@ dataSources:
     name: DepositRouter
     network: base
     source:
-      # TODO: Replace with actual deployed DepositRouter address
-      address: "0x0000000000000000000000000000000000000000"
+      # NOT DEPLOYED — intentionally dormant.
+      address: "0x0000000000000000000000000000000000000001"
       abi: DepositRouter
-      # TODO: Set to actual deployment block
-      startBlock: 0
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -292,11 +287,10 @@ dataSources:
     name: PeripheryUpkeepAdapter
     network: base
     source:
-      # TODO: Replace with actual deployed PeripheryUpkeepAdapter address
-      address: "0x0000000000000000000000000000000000000000"
+      # NOT DEPLOYED — intentionally dormant.
+      address: "0x0000000000000000000000000000000000000001"
       abi: PeripheryUpkeepAdapter
-      # TODO: Set to actual deployment block
-      startBlock: 0
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -374,7 +368,8 @@ dataSources:
     source:
       address: "0x0000000000000000000000000000000000000001"
       abi: IncentivesEngine
-      startBlock: 1
+      # NOT DEPLOYED — intentionally dormant.
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -419,6 +414,8 @@ templates:
         - PositionLot
         - Transaction
         - ClaimRequest
+        - WithdrawalEpoch
+        - WithdrawalEpochEvent
         - User
         - TokenPrice
         - FeeEvent
@@ -547,20 +544,24 @@ templates:
         # =========================================================================
         # Claim Queue Events
         # =========================================================================
-        - event: ClaimRequested(indexed uint256,indexed address,uint256,bool)
-          handler: handleClaimRequested
-        - event: ClaimCancelled(indexed uint256,indexed address)
-          handler: handleClaimCancelled
-        - event: ClaimSettled(indexed uint256,indexed address,uint256)
-          handler: handleClaimSettled
-        - event: ClaimQueued(indexed uint256)
-          handler: handleClaimQueued
-        - event: ClaimDequeued(indexed uint256)
-          handler: handleClaimDequeued
-        - event: SharesFrozen(indexed address,uint256,uint256)
-          handler: handleSharesFrozen
-        - event: SharesUnfrozen(indexed address,uint256,uint256)
-          handler: handleSharesUnfrozen
+        - event: EpochOpened(indexed uint256,uint64)
+          handler: handleEpochOpened
+        - event: EpochWithdrawalRequested(indexed uint256,indexed uint256,indexed address,uint256,uint256,uint256)
+          handler: handleEpochWithdrawalRequested
+        - event: EpochWithdrawalCancelled(indexed uint256,indexed uint256,indexed address,uint256)
+          handler: handleEpochWithdrawalCancelled
+        - event: EpochClosed(indexed uint256,uint256,uint256,uint256,uint256)
+          handler: handleEpochClosed
+        - event: EpochFundAttempt(indexed uint256,uint256,uint256,uint256)
+          handler: handleEpochFundAttempt
+        - event: EpochFundSkipped(indexed uint256,uint256,uint256)
+          handler: handleEpochFundSkipped
+        - event: EpochFundingShortfall(indexed uint256,uint256,uint256,uint256)
+          handler: handleEpochFundingShortfall
+        - event: EpochFunded(indexed uint256,uint256)
+          handler: handleQueueEpochFunded
+        - event: EpochAssetsClaimed(indexed uint256,indexed uint256,indexed address,uint256,uint256)
+          handler: handleEpochAssetsClaimed
 
         # =========================================================================
         # Routing / Ops Events
@@ -573,7 +574,7 @@ templates:
           handler: handleRealizedForQueue
         - event: StrategiesRebalanced(uint256,uint256)
           handler: handleStrategiesRebalanced
-        - event: QueuePrescanBoundHit(uint256,uint256)
+        - event: QueuePrescanBoundHit(uint256,uint256,uint256,uint256,bool)
           handler: handleQueuePrescanBoundHit
         - event: MinDelaySubmitted(uint64,uint64)
           handler: handleMinDelaySubmitted
@@ -583,8 +584,8 @@ templates:
           handler: handleMinDelayRevoked
         - event: ReserveTargetRestored(uint256)
           handler: handleReserveTargetRestored
-        - event: EpochRolled(uint256)
-          handler: handleEpochRolled
+        - event: WithdrawalCapEpochRolled(uint256)
+          handler: handleWithdrawalCapEpochRolled
         - event: VaultPpsSnapshot(uint64,uint256,uint256,uint256)
           handler: handleVaultPpsSnapshot
 
@@ -655,8 +656,6 @@ templates:
           handler: handleOwnershipTransferred
         - event: AuthorizedSealerSet(indexed address)
           handler: handleAuthorizedSealerSet
-        - event: SealPrepared(indexed address,bytes32)
-          handler: handleSealPrepared
         - event: SystemSealed(indexed address,bytes32,uint256)
           handler: handleSystemSealed
 
@@ -691,7 +690,7 @@ templates:
           handler: handleIncentivesEngineUpdated
         - event: RewardsPayoutManagerUpdated(indexed address)
           handler: handleRewardsPayoutManagerUpdated
-        - event: RewardSharesMinted(indexed address,uint256,uint256)
+        - event: RewardSharesPaid(indexed address,indexed address,uint256,uint256)
           handler: handleRewardSharesMinted
         - event: FeeCollectorUpdated(indexed address)
           handler: handleFeeCollectorUpdated
@@ -721,7 +720,7 @@ templates:
         # =========================================================================
         # Warm Adapter Events
         # =========================================================================
-        - event: WarmAdapterApproved(indexed address)
+        - event: WarmAdapterApproved(indexed address,uint256)
           handler: handleWarmAdapterApproved
         - event: WarmAdapterRevoked(indexed address)
           handler: handleWarmAdapterRevoked

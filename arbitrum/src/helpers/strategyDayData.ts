@@ -43,7 +43,8 @@ export function getOrCreateStrategyDayData(
     d.periodStartUnix = dayId * SECONDS_PER_DAY
 
     d.totalAssets = ZERO_BI
-    d.totalAssetsUsd = ZERO_BD
+    d.totalAssetsUsd = vault.assetPriceUsd === null ? null : ZERO_BD
+    d.priceStatus = vault.priceStatus
     d.weightBps = 0
     d.allocationPct = ZERO_BD
 
@@ -77,13 +78,16 @@ export function getOrCreateStrategyDayData(
     }
 
     let price = vault.assetPriceUsd
-    if (price.gt(ZERO_BD)) {
+    d.priceStatus = vault.priceStatus
+    if (price !== null && price.gt(ZERO_BD)) {
       let scale = BigDecimal.fromString("1")
       let decimals = vault.assetDecimals
       for (let i: i32 = 0; i < decimals; i++) {
         scale = scale.times(BigDecimal.fromString("10"))
       }
       d.totalAssetsUsd = vs.totalAssets.toBigDecimal().div(scale).times(price)
+    } else {
+      d.totalAssetsUsd = null
     }
   }
 

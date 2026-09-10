@@ -4,7 +4,6 @@ import { ChainlinkAggregator } from "../../generated/templates/VaultTemplate/Cha
 import {
   ZERO_BI,
   ZERO_BD,
-  ONE_E8_BD,
   ONE_E18_BD,
   DEFAULT_USDC_PRICE,
   CHAINLINK_USDC_USD_ARBITRUM,
@@ -23,7 +22,7 @@ import {
 // =============================================================================
 
 export class PriceResult {
-  price: BigDecimal = BigDecimal.zero()
+  price: BigDecimal | null = null
   status: string = "MISSING"  // VALID, STALE, FALLBACK, MISSING
   stalenessSeconds: BigInt = BigInt.zero()
 }
@@ -135,7 +134,13 @@ export function fetchChainlinkPriceWithStatus(
   let age = currentTimestamp.minus(updatedAt)
   if (age.lt(ZERO_BI)) age = ZERO_BI
   result.stalenessSeconds = age
-  result.price = answer.toBigDecimal().div(ONE_E8_BD)
+  let decimalsResult = contract.try_decimals()
+  let feedDecimals = decimalsResult.reverted ? 8 : decimalsResult.value
+  let scale = BigDecimal.fromString("1")
+  for (let i: i32 = 0; i < feedDecimals; i++) {
+    scale = scale.times(BigDecimal.fromString("10"))
+  }
+  result.price = answer.toBigDecimal().div(scale)
   result.status = age.gt(STALENESS_THRESHOLD) ? "STALE" : "VALID"
   return result
 }
@@ -147,7 +152,13 @@ export function fetchChainlinkPrice(feedAddress: Address): BigDecimal {
   if (latestRoundResult.reverted) return ZERO_BD
   let answer = latestRoundResult.value.value1
   if (answer.le(ZERO_BI)) return ZERO_BD
-  return answer.toBigDecimal().div(ONE_E8_BD)
+  let decimalsResult = contract.try_decimals()
+  let feedDecimals = decimalsResult.reverted ? 8 : decimalsResult.value
+  let scale = BigDecimal.fromString("1")
+  for (let i: i32 = 0; i < feedDecimals; i++) {
+    scale = scale.times(BigDecimal.fromString("10"))
+  }
+  return answer.toBigDecimal().div(scale)
 }
 
 // =============================================================================
@@ -168,7 +179,7 @@ export function getOrCreateTokenPrice(
     tokenPrice.chainId = chainId
     tokenPrice.symbol = symbol
     tokenPrice.decimals = decimals
-    tokenPrice.priceUsd = ZERO_BD
+    tokenPrice.priceUsd = null
     tokenPrice.source = "NONE"
     tokenPrice.status = "MISSING"
     tokenPrice.feed = null
@@ -197,9 +208,10 @@ export function updateTokenPriceWithStatus(
       Address.fromBytes(feed.feedAddress),
       block.timestamp
     )
-    if (chainlinkResult.price.gt(ZERO_BD)) {
-      writeTokenPrice(id, chainlinkResult.price, "CHAINLINK", chainlinkResult.status, feed.id, chainlinkResult.stalenessSeconds, block)
-      snapshotTokenPriceDayData(id, token, chainId, chainlinkResult.price, chainlinkResult.status, "CHAINLINK", block)
+    let chainlinkPrice = chainlinkResult.price
+    if (chainlinkPrice !== null && chainlinkPrice.gt(ZERO_BD)) {
+      writeTokenPrice(id, chainlinkPrice, "CHAINLINK", chainlinkResult.status, feed.id, chainlinkResult.stalenessSeconds, block)
+      snapshotTokenPriceDayData(id, token, chainId, chainlinkPrice, chainlinkResult.status, "CHAINLINK", block)
       return chainlinkResult
     }
   }
@@ -214,16 +226,16 @@ export function updateTokenPriceWithStatus(
   }
 
   // No feed resolvable and not USDC -> MISSING, propagate "unknown" not zero.
-  result.price = ZERO_BD
+  result.price = null
   result.status = "MISSING"
-  writeTokenPrice(id, ZERO_BD, "NONE", "MISSING", null, ZERO_BI, block)
-  snapshotTokenPriceDayData(id, token, chainId, ZERO_BD, "MISSING", "NONE", block)
+  writeTokenPrice(id, null, "NONE", "MISSING", null, ZERO_BI, block)
+  snapshotTokenPriceDayData(id, token, chainId, null, "MISSING", "NONE", block)
   return result
 }
 
 function writeTokenPrice(
   id: string,
-  price: BigDecimal,
+  price: BigDecimal | null,
   source: string,
   status: string,
   feedId: string | null,
@@ -250,7 +262,7 @@ function snapshotTokenPriceDayData(
   tokenPriceId: string,
   token: Address,
   chainId: i32,
-  price: BigDecimal,
+  price: BigDecimal | null,
   status: string,
   source: string,
   block: ethereum.Block
@@ -274,8 +286,12 @@ function snapshotTokenPriceDayData(
   d.status = status
   d.source = source
   d.samples = d.samples + 1
-  if (price.lt(d.minPriceUsd) || d.samples == 1) d.minPriceUsd = price
-  if (price.gt(d.maxPriceUsd)) d.maxPriceUsd = price
+  if (price !== null) {
+    let minPrice = d.minPriceUsd
+    let maxPrice = d.maxPriceUsd
+    if (minPrice === null || price.lt(minPrice)) d.minPriceUsd = price
+    if (maxPrice === null || price.gt(maxPrice)) d.maxPriceUsd = price
+  }
   d.save()
 }
 
@@ -283,11 +299,11 @@ function snapshotTokenPriceDayData(
 // LEGACY / CONVENIENCE
 // =============================================================================
 
-export function updateTokenPrice(token: Address, chainId: i32, block: ethereum.Block): BigDecimal {
+export function updateTokenPrice(token: Address, chainId: i32, block: ethereum.Block): BigDecimal | null {
   return updateTokenPriceWithStatus(token, chainId, block).price
 }
 
-export function getTokenPriceUsd(token: Address, chainId: i32, block: ethereum.Block): BigDecimal {
+export function getTokenPriceUsd(token: Address, chainId: i32, block: ethereum.Block): BigDecimal | null {
   let id = token.toHexString().toLowerCase() + "-" + chainId.toString()
   let tokenPrice = TokenPrice.load(id)
   let staleness = BigInt.fromI32(300) // 5 minutes
@@ -297,7 +313,12 @@ export function getTokenPriceUsd(token: Address, chainId: i32, block: ethereum.B
   return updateTokenPrice(token, chainId, block)
 }
 
-export function convertToUsd(amount: BigInt, assetDecimals: i32, priceUsd: BigDecimal): BigDecimal {
+export function convertToUsd(
+  amount: BigInt,
+  assetDecimals: i32,
+  priceUsd: BigDecimal | null
+): BigDecimal | null {
+  if (priceUsd === null) return null
   if (amount.equals(ZERO_BI) || priceUsd.equals(ZERO_BD)) {
     return ZERO_BD
   }

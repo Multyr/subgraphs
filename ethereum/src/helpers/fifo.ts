@@ -1,6 +1,7 @@
 import { BigInt, BigDecimal, Bytes, ethereum } from "@graphprotocol/graph-ts"
 import { UserVaultPosition, PositionLot } from "../../generated/schema"
 import { ZERO_BI, ZERO_BD, ONE_E18, safeDiv } from "./constants"
+import { addUsd } from "./nullableUsd"
 
 // =============================================================================
 // FIFO COST BASIS TRACKING  (SG-16 hardened)
@@ -41,9 +42,9 @@ export function createPositionLot(
   position: UserVaultPosition,
   shares: BigInt,
   assets: BigInt,
-  assetsUsd: BigDecimal,
+  assetsUsd: BigDecimal | null,
   sharePrice: BigInt,
-  assetPriceUsd: BigDecimal,
+  assetPriceUsd: BigDecimal | null,
   txHash: Bytes,
   block: ethereum.Block
 ): PositionLot {
@@ -75,7 +76,7 @@ export function consumeSharesFIFO(
   position: UserVaultPosition,
   sharesToConsume: BigInt,
   currentAssetValue: BigInt,
-  currentAssetPriceUsd: BigDecimal
+  currentAssetPriceUsd: BigDecimal | null
 ): FIFOResult {
   let result = new FIFOResult()
   result.realizedPnlAssets = ZERO_BI
@@ -104,19 +105,26 @@ export function consumeSharesFIFO(
         : lot.sharesRemaining
 
       let costBasisPortion = ZERO_BI
-      let costBasisUsdPortion = ZERO_BD
+      let costBasisUsdPortion: BigDecimal | null = ZERO_BD
+      let lotUsdCost = lot.usdCost
       if (lot.sharesBought.gt(ZERO_BI)) {
         costBasisPortion = lot.assetsCost.times(sharesToTake).div(lot.sharesBought)
-        costBasisUsdPortion = lot.usdCost.times(sharesToTake.toBigDecimal()).div(lot.sharesBought.toBigDecimal())
+        costBasisUsdPortion = lotUsdCost === null
+          ? null
+          : lotUsdCost.times(sharesToTake.toBigDecimal()).div(lot.sharesBought.toBigDecimal())
       }
 
       let valueOfShares = sharesToTake.times(valuePerShare).div(ONE_E18)
-      let valueOfSharesUsd = valueOfShares.toBigDecimal().times(currentAssetPriceUsd)
+      let valueOfSharesUsd: BigDecimal | null = currentAssetPriceUsd === null
+        ? null
+        : valueOfShares.toBigDecimal().times(currentAssetPriceUsd)
 
       result.realizedPnlAssets = result.realizedPnlAssets.plus(valueOfShares.minus(costBasisPortion))
-      result.realizedPnlUsd = result.realizedPnlUsd.plus(valueOfSharesUsd.minus(costBasisUsdPortion))
+      result.realizedPnlUsd = valueOfSharesUsd === null || costBasisUsdPortion === null
+        ? null
+        : addUsd(result.realizedPnlUsd, valueOfSharesUsd.minus(costBasisUsdPortion))
       result.costBasisConsumedAssets = result.costBasisConsumedAssets.plus(costBasisPortion)
-      result.costBasisConsumedUsd = result.costBasisConsumedUsd.plus(costBasisUsdPortion)
+      result.costBasisConsumedUsd = addUsd(result.costBasisConsumedUsd, costBasisUsdPortion)
 
       lot.sharesRemaining = lot.sharesRemaining.minus(sharesToTake)
       lot.isFullyConsumed = lot.sharesRemaining.equals(ZERO_BI)
@@ -142,7 +150,7 @@ export function transferLotsFIFO(
   toPosition: UserVaultPosition,
   sharesToTransfer: BigInt,
   sharePrice: BigInt,
-  assetPriceUsd: BigDecimal,
+  assetPriceUsd: BigDecimal | null,
   txHash: Bytes,
   block: ethereum.Block
 ): void {
@@ -160,10 +168,13 @@ export function transferLotsFIFO(
         : lot.sharesRemaining
 
       let costPortion = ZERO_BI
-      let costUsdPortion = ZERO_BD
+      let costUsdPortion: BigDecimal | null = ZERO_BD
+      let lotUsdCost = lot.usdCost
       if (lot.sharesBought.gt(ZERO_BI)) {
         costPortion = lot.assetsCost.times(sharesToTake).div(lot.sharesBought)
-        costUsdPortion = lot.usdCost.times(sharesToTake.toBigDecimal()).div(lot.sharesBought.toBigDecimal())
+        costUsdPortion = lotUsdCost === null
+          ? null
+          : lotUsdCost.times(sharesToTake.toBigDecimal()).div(lot.sharesBought.toBigDecimal())
       }
 
       // Receiver lot mirrors the sender lot's original acquisition data
@@ -207,9 +218,12 @@ export function calculateTotalCostBasis(position: UserVaultPosition): CostBasisR
     let lot = PositionLot.load(position.id + "-" + i.toString())
     if (lot != null && lot.sharesRemaining.gt(ZERO_BI) && lot.sharesBought.gt(ZERO_BI)) {
       let costRemaining = lot.assetsCost.times(lot.sharesRemaining).div(lot.sharesBought)
-      let costUsdRemaining = lot.usdCost.times(lot.sharesRemaining.toBigDecimal()).div(lot.sharesBought.toBigDecimal())
+      let lotUsdCost = lot.usdCost
+      let costUsdRemaining: BigDecimal | null = lotUsdCost === null
+        ? null
+        : lotUsdCost.times(lot.sharesRemaining.toBigDecimal()).div(lot.sharesBought.toBigDecimal())
       result.totalCostAssets = result.totalCostAssets.plus(costRemaining)
-      result.totalCostUsd = result.totalCostUsd.plus(costUsdRemaining)
+      result.totalCostUsd = addUsd(result.totalCostUsd, costUsdRemaining)
     }
   }
 
@@ -222,12 +236,12 @@ export function calculateTotalCostBasis(position: UserVaultPosition): CostBasisR
 
 export class FIFOResult {
   realizedPnlAssets: BigInt = BigInt.zero()
-  realizedPnlUsd: BigDecimal = BigDecimal.zero()
+  realizedPnlUsd: BigDecimal | null = BigDecimal.zero()
   costBasisConsumedAssets: BigInt = BigInt.zero()
-  costBasisConsumedUsd: BigDecimal = BigDecimal.zero()
+  costBasisConsumedUsd: BigDecimal | null = BigDecimal.zero()
 }
 
 export class CostBasisResult {
   totalCostAssets: BigInt = BigInt.zero()
-  totalCostUsd: BigDecimal = BigDecimal.zero()
+  totalCostUsd: BigDecimal | null = BigDecimal.zero()
 }

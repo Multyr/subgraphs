@@ -8,6 +8,7 @@ import {
   SECONDS_PER_HOUR,
   safeDiv
 } from "./constants"
+import { addUsd, subtractUsd } from "./nullableUsd"
 
 // =============================================================================
 // SG-7 — VaultHourData (intraday time series)
@@ -51,6 +52,7 @@ export function getOrCreateVaultHourData(vault: Vault, timestamp: BigInt): Vault
   d.sharePrice = vault.sharePrice
   d.tvlUsd = vault.tvlUsd
   d.assetPriceUsd = vault.assetPriceUsd
+  d.priceStatus = vault.priceStatus
 
   return d
 }
@@ -96,14 +98,14 @@ export function recordHourlyDeposit(
   vault: Vault,
   timestamp: BigInt,
   assets: BigInt,
-  assetsUsd: BigDecimal,
+  assetsUsd: BigDecimal | null,
   isNewUser: boolean
 ): void {
   let d = getOrCreateVaultHourData(vault, timestamp)
   d.depositsAssets = d.depositsAssets.plus(assets)
-  d.depositsUsd = d.depositsUsd.plus(assetsUsd)
+  d.depositsUsd = addUsd(d.depositsUsd, assetsUsd)
   d.netFlowAssets = d.depositsAssets.minus(d.withdrawalsAssets)
-  d.netFlowUsd = d.depositsUsd.minus(d.withdrawalsUsd)
+  d.netFlowUsd = subtractUsd(d.depositsUsd, d.withdrawalsUsd)
   d.depositCount = d.depositCount + 1
   if (isNewUser) d.uniqueUsers = d.uniqueUsers + 1
   updateVaultHourDataReturn(d)
@@ -115,13 +117,13 @@ export function recordHourlyWithdraw(
   vault: Vault,
   timestamp: BigInt,
   assets: BigInt,
-  assetsUsd: BigDecimal
+  assetsUsd: BigDecimal | null
 ): void {
   let d = getOrCreateVaultHourData(vault, timestamp)
   d.withdrawalsAssets = d.withdrawalsAssets.plus(assets)
-  d.withdrawalsUsd = d.withdrawalsUsd.plus(assetsUsd)
+  d.withdrawalsUsd = addUsd(d.withdrawalsUsd, assetsUsd)
   d.netFlowAssets = d.depositsAssets.minus(d.withdrawalsAssets)
-  d.netFlowUsd = d.depositsUsd.minus(d.withdrawalsUsd)
+  d.netFlowUsd = subtractUsd(d.depositsUsd, d.withdrawalsUsd)
   d.withdrawCount = d.withdrawCount + 1
   updateVaultHourDataReturn(d)
   d.save()

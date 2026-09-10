@@ -23,16 +23,6 @@
         "internalType": "address"
       },
       {
-        "name": "defaultMaxClaims",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "hardMaxClaims",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
         "name": "defaultMaxRealize",
         "type": "uint256",
         "internalType": "uint256"
@@ -57,19 +47,6 @@
   },
   {
     "type": "function",
-    "name": "DEFAULT_MAX_CLAIMS",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "DEFAULT_MAX_DEPLOY",
     "inputs": [],
     "outputs": [
@@ -84,19 +61,6 @@
   {
     "type": "function",
     "name": "DEFAULT_MAX_REALIZE",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "HARD_MAX_CLAIMS",
     "inputs": [],
     "outputs": [
       {
@@ -179,6 +143,45 @@
         "name": "",
         "type": "uint64",
         "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "epochFundStallBackoffSeconds",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "epochFundStallCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "epochFundStallThreshold",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
       }
     ],
     "stateMutability": "view"
@@ -282,6 +285,32 @@
   },
   {
     "type": "function",
+    "name": "lastEpochFundStallTs",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "lastEpochFundTargetId",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "lastFailureTs",
     "inputs": [],
     "outputs": [
@@ -373,6 +402,19 @@
   },
   {
     "type": "function",
+    "name": "rebalanceGuard",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "reconcileHighThreshold",
     "inputs": [],
     "outputs": [
@@ -419,6 +461,24 @@
   },
   {
     "type": "function",
+    "name": "setEpochFundStallBackoff",
+    "inputs": [
+      {
+        "name": "threshold",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "backoffSeconds",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setFailureBackoff",
     "inputs": [
       {
@@ -437,12 +497,43 @@
   },
   {
     "type": "function",
+    "name": "setRebalanceGuard",
+    "inputs": [
+      {
+        "name": "g",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setReconcileHighThreshold",
     "inputs": [
       {
         "name": "threshold",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setRegimeCooldowns",
+    "inputs": [
+      {
+        "name": "volatileCd",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "stressCd",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
     "outputs": [],
@@ -476,6 +567,19 @@
   },
   {
     "type": "function",
+    "name": "stressCooldown",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "transferOwnership",
     "inputs": [
       {
@@ -488,6 +592,19 @@
     "stateMutability": "nonpayable"
   },
   {
+    "type": "function",
+    "name": "volatileCooldown",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
     "type": "event",
     "name": "DeployRealizeCooldownSet",
     "inputs": [
@@ -496,6 +613,25 @@
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "EpochFundStallBackoffConfigured",
+    "inputs": [
+      {
+        "name": "threshold",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "backoffSeconds",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
       }
     ],
     "anonymous": false
@@ -540,19 +676,13 @@
   },
   {
     "type": "event",
-    "name": "RealizeForQueueFailed",
+    "name": "RebalanceGuardSet",
     "inputs": [
       {
-        "name": "target",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "reason",
-        "type": "bytes",
-        "indexed": false,
-        "internalType": "bytes"
+        "name": "guard",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       }
     ],
     "anonymous": false
@@ -566,6 +696,25 @@
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RegimeCooldownsSet",
+    "inputs": [
+      {
+        "name": "volatileCd",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "stressCd",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
       }
     ],
     "anonymous": false
@@ -626,6 +775,11 @@
       }
     ],
     "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "FixedMaturityAutomationDisabledForMode",
+    "inputs": []
   },
   {
     "type": "error",
