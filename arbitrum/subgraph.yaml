@@ -95,6 +95,8 @@ dataSources:
           file: ./abis/GlobalConfig.json
         - name: PriceOracleMiddleware
           file: ./abis/PriceOracleMiddleware.json
+        - name: ChainlinkAggregator
+          file: ./abis/ChainlinkAggregator.json
       eventHandlers:
         - event: DefaultOracleConfigSet(indexed address,uint256)
           handler: handleDefaultOracleConfigSet
