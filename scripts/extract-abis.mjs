@@ -31,8 +31,9 @@ const CHAINS = ['ethereum', 'arbitrum', 'base'];
  * artifacts are merged because module events are emitted from the delegating
  * CoreVault/strategy address.
  *
- * For Vault.json we merge CoreVault + EpochedQueueModule + AdminModule because:
- * - EpochedQueueModule and AdminModule are called via delegatecall
+ * For Vault.json we merge CoreVault + its delegatecall modules (EpochedQueueModule,
+ * AdminModule, ERC4626Module, LiquidityOpsModule) because:
+ * - The modules are called via delegatecall
  * - Their events are emitted from CoreVault's address
  * - The subgraph needs all events in one ABI
  */
@@ -42,11 +43,14 @@ const CONTRACTS = {
     resolve(CORE_OUT_DIR, 'CoreVault.sol/CoreVault.json'),
     resolve(CORE_OUT_DIR, 'EpochedQueueModule.sol/EpochedQueueModule.json'),
     resolve(CORE_OUT_DIR, 'AdminModule.sol/AdminModule.json'),
+    resolve(CORE_OUT_DIR, 'ERC4626Module.sol/ERC4626Module.json'),
+    resolve(CORE_OUT_DIR, 'LiquidityOpsModule.sol/LiquidityOpsModule.json'),
     resolve(CORE_OUT_DIR, 'Events.sol/Events.json'),
   ],
   'GlobalConfig.json': [resolve(CORE_OUT_DIR, 'GlobalConfig.sol/GlobalConfig.json')],
   'PriceOracleMiddleware.json': [resolve(CORE_OUT_DIR, 'PriceOracleMiddleware.sol/PriceOracleMiddleware.json')],
   'VaultUpkeep.json': [resolve(CORE_OUT_DIR, 'VaultUpkeep.sol/VaultUpkeep.json')],
+  'ClaimSettlementUpkeep.json': [resolve(CORE_OUT_DIR, 'ClaimSettlementUpkeep.sol/ClaimSettlementUpkeep.json')],
   'StrategyRouter.json': [resolve(CORE_OUT_DIR, 'StrategyRouter.sol/StrategyRouter.json')],
   'Strategy.json': [
     resolve(STRATEGIES_OUT_DIR, 'UsdcLendingStrategy.sol/UsdcMultiLendingVault.json'),

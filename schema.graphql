@@ -18,7 +18,8 @@ enum TransactionType {
   TRANSFER
   CLAIM
   CLAIM_REQUEST
-  CLAIM_CANCEL
+  CLAIM_CANCEL        # legacy: economic-exit core has no cancel
+  INSTANT_WITHDRAW    # EpochedQueueModule InstantExit (paid in the request tx)
 }
 
 # Vault status
@@ -49,6 +50,7 @@ enum UpkeepKind {
   STRATEGY        # multyr-strategies LendingStrategyUpkeep / MultiplyStrategyUpkeep
   PERIPHERY       # PeripheryUpkeepAdapter (rewards pipeline)
   FEE_COLLECTOR   # FeeCollectorUpkeep
+  CLAIM_SETTLEMENT # multyr-core ClaimSettlementUpkeep
 }
 
 # Decoded on-chain upkeep operation (SG-3).
@@ -74,6 +76,7 @@ enum UpkeepOpType {
   PERIPHERY_REDEEM
   PERIPHERY_FUND
   FEE_DISTRIBUTION
+  CLAIM_SETTLE
   UNKNOWN
 }
 
@@ -176,6 +179,11 @@ type Vault @entity {
   activeAllPause: String
   activeDepositsPause: String
   activeWithdrawalsPause: String
+  activeInstantWithdrawalsPause: String
+  activeQueuedRequestsPause: String
+  activeEpochCloseFundPause: String
+  activeFundedClaimsPause: String
+  activeForceExitPause: String
   pauseEvents: [VaultPauseEvent!]! @derivedFrom(field: "vault")
 
   # Components (addresses)
@@ -194,6 +202,14 @@ type Vault @entity {
   totalDeposits: BigInt!
   totalWithdrawals: BigInt!
   totalUsers: Int!
+
+  # Economic-exit liability state. Withdrawal requests burn shares and fix
+  # assetsOwed at request; totalAssets() = max(0, grossAssets - totalOwed).
+  grossAssets: BigInt
+  totalOwed: BigInt
+  liabilityIndex: BigInt          # WAD; < 1e18 only while insolvent
+  isInsolvent: Boolean!
+  solvencyEvents: [VaultSolvencyEvent!]! @derivedFrom(field: "vault")
   transactionCount: Int!
 
   updatedAt: BigInt!
@@ -443,6 +459,8 @@ type ClaimRequest @entity {
   feeShares: BigInt!
   assets: BigInt!
   assetsEstimated: BigInt!
+  assetsOwed: BigInt              # fixed at request (economic exit)
+  recoveryLoss: BigInt            # assetsOwed - assetsReceived when the epoch recovered < 100%
 
   isImmediate: Boolean!
   status: String!
@@ -454,6 +472,7 @@ type ClaimRequest @entity {
   settleTxHash: Bytes
   assetsReceived: BigInt
 
+  # legacy: economic-exit core has no cancel
   cancelledAt: BigInt
   cancelTxHash: Bytes
 }
@@ -477,14 +496,22 @@ type WithdrawalEpoch @entity {
   epochClosesAt: BigInt!
   closedAt: BigInt
   fundedAt: BigInt
-  ppsAtClose: BigInt
+  ppsAtClose: BigInt              # legacy: epochs no longer price at close
 
   totalGrossShares: BigInt!
   totalNetShares: BigInt!
-  totalNetAssets: BigInt!
+  totalNetAssets: BigInt!         # nominal assets owed to the cohort (== totalAssetsOwed)
+  totalAssetsOwed: BigInt!
   totalFeeShares: BigInt!
   claimCount: BigInt!
-  cancelledClaimCount: BigInt!
+  cancelledClaimCount: BigInt!    # legacy: always 0 on the economic-exit core
+
+  # Set once when the epoch becomes FUNDED (EpochRecoveryCrystallized)
+  reservedAssets: BigInt
+  recoveryIndex: BigInt           # WAD; 1e18 = paid in full
+  recoveredAssets: BigInt
+  writeOffAssets: BigInt
+  lastNavInvalidReason: Int
   claimedCount: BigInt!
   claimedAssets: BigInt!
 
@@ -502,11 +529,13 @@ type WithdrawalEpoch @entity {
 enum WithdrawalEpochEventType {
   OPENED
   WITHDRAWAL_REQUESTED
-  WITHDRAWAL_CANCELLED
+  WITHDRAWAL_CANCELLED  # legacy
   CLOSED
   FUND_ATTEMPT
   FUND_SKIPPED
   FUNDING_SHORTFALL
+  FUNDING_NAV_INVALID
+  RECOVERY_CRYSTALLIZED
   FUNDED
   ASSETS_CLAIMED
 }
@@ -538,7 +567,33 @@ type WithdrawalEpochEvent @entity {
   cursorAfter: BigInt
   freeLiquidity: BigInt
   shortfall: BigInt
+  assetsOwed: BigInt
+  totalAssetsOwed: BigInt
+  recoveryIndex: BigInt
+  unclaimed: BigInt
+  recovered: BigInt
+  writeOff: BigInt
+  navInvalidReason: Int
 
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+enum SolvencyEventType {
+  ENTERED
+  EXITED
+}
+
+# InsolvencyEntered / InsolvencyExited (gross < owed). ID: txHash-logIndex
+type VaultSolvencyEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+  type: SolvencyEventType!
+  grossAssets: BigInt!
+  totalOwed: BigInt!
+  liabilityIndex: BigInt          # ENTERED only
   timestamp: BigInt!
   blockNumber: BigInt!
   txHash: Bytes!
@@ -555,6 +610,8 @@ type ForceWithdrawEvent @entity {
   receiver: Bytes!
   assets: BigInt!
   sharesSpent: BigInt!
+  targetAssets: BigInt            # forceWithdrawAll only (partial fill when assets < target)
+  isWithdrawAll: Boolean!
 
   timestamp: BigInt!
   blockNumber: BigInt!
@@ -725,6 +782,34 @@ type UpkeepAction @entity {
   gasPrice: BigInt
   txFeeWei: BigInt            # gasUsed * gasPrice, precomputed
 
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+enum ClaimSettlementEventType {
+  PERFORMED
+  CLAIM_FAILED
+  CLAIM_EXCLUDED
+  CURSOR_SET
+  BATCH_CONFIGURED
+}
+
+# ClaimSettlementUpkeep activity. ID: txHash-logIndex
+type ClaimSettlementUpkeepEvent @entity {
+  id: ID!
+  chainId: Int!
+  upkeep: Bytes!
+  type: ClaimSettlementEventType!
+  epochId: BigInt
+  claimId: BigInt
+  claimCount: BigInt
+  totalSettled: BigInt
+  success: Boolean
+  retryAt: BigInt
+  excluded: Boolean
+  maxClaimsPerUpkeep: BigInt
+  maxScanPerUpkeep: BigInt
   timestamp: BigInt!
   blockNumber: BigInt!
   txHash: Bytes!
@@ -1112,6 +1197,11 @@ enum PauseScope {
   ALL
   DEPOSITS
   WITHDRAWALS
+  INSTANT_WITHDRAWALS
+  QUEUED_REQUESTS
+  EPOCH_CLOSE_FUND
+  FUNDED_CLAIMS
+  FORCE_EXIT
 }
 
 # Vault pause history with duration (SG-9). ID: {vaultId}-{scope}-{pausedAtTxHash}

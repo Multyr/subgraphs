@@ -964,19 +964,6 @@
   },
   {
     "type": "function",
-    "name": "description",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "driftToleranceBps",
     "inputs": [],
     "outputs": [
@@ -1741,6 +1728,19 @@
   },
   {
     "type": "function",
+    "name": "metadataId",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "minAdaptersActive",
     "inputs": [],
     "outputs": [
@@ -1880,7 +1880,7 @@
         "internalType": "string"
       }
     ],
-    "stateMutability": "view"
+    "stateMutability": "pure"
   },
   {
     "type": "function",
@@ -2925,6 +2925,37 @@
         "type": "uint8",
         "indexed": false,
         "internalType": "uint8"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "AdapterCallFailed",
+    "inputs": [
+      {
+        "name": "adapter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "selector",
+        "type": "bytes4",
+        "indexed": true,
+        "internalType": "bytes4"
+      },
+      {
+        "name": "timestamp",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "data",
+        "type": "bytes",
+        "indexed": false,
+        "internalType": "bytes"
       }
     ],
     "anonymous": false
@@ -6759,7 +6790,63 @@
         ]
       }
     ],
-    "stateMutability": "view"
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "execComputeScoresObserved",
+    "inputs": [
+      {
+        "name": "enabledAdapters",
+        "type": "address[]",
+        "internalType": "address[]"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple[]",
+        "internalType": "struct AdapterScore[]",
+        "components": [
+          {
+            "name": "adapter",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "score",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "apyBps",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "incentiveBps",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "liqBps",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "riskBps",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "stabilityBps",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -6886,7 +6973,7 @@
         "internalType": "uint256"
       }
     ],
-    "stateMutability": "view"
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",

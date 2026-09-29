@@ -183,6 +183,9 @@ export function getOrCreateVault(
     vault.totalUsers = 0
     vault.transactionCount = 0
 
+    // Economic-exit liability state
+    vault.isInsolvent = false
+
     vault.updatedAt = block.timestamp
   }
 
@@ -240,6 +243,24 @@ export function refreshVaultState(vault: Vault, block: ethereum.Block): void {
 
   vault.updatedAt = block.timestamp
   vault.save()
+}
+
+/**
+ * Refresh the economic-exit liability state (grossAssets / totalOwed /
+ * liabilityIndex / isInsolvent). Called from the queue, claim and solvency
+ * handlers only; caller saves the vault.
+ */
+export function refreshLiabilityState(vault: Vault): void {
+  let contract = VaultContract.bind(Address.fromBytes(vault.address))
+
+  let gross = contract.try_grossAssets()
+  if (!gross.reverted) vault.grossAssets = gross.value
+  let owed = contract.try_totalOwed()
+  if (!owed.reverted) vault.totalOwed = owed.value
+  let index = contract.try_liabilityIndex()
+  if (!index.reverted) vault.liabilityIndex = index.value
+  let insolvent = contract.try_isInsolvent()
+  if (!insolvent.reverted) vault.isInsolvent = insolvent.value
 }
 
 // =============================================================================

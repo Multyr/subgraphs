@@ -9,10 +9,10 @@ dataSources:
     name: VaultFactory
     network: arbitrum-one
     source:
-      # EOA test deployment (multyr-core/broadcast/eoa-test-core-addresses.json)
-      address: "0x27b5B83E77044817310c14CF62D96be606f79436"
+      # 25 Sep 2026 deployment (multyr-core/broadcast/core-deployer-20260925.json)
+      address: "0xa762B044C216c699A0bB1d0B7eA169a1716EB62d"
       abi: VaultFactory
-      startBlock: 503229720
+      startBlock: 508771925
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -51,10 +51,10 @@ dataSources:
     name: VaultUpkeep
     network: arbitrum-one
     source:
-      # EOA test deployment (multyr-core/broadcast/eoa-test-core-addresses.json)
-      address: "0x8672921E03c9995AE1Dbe234A7a08C327163883e"
+      # 25 Sep 2026 deployment (multyr-core/broadcast/core-deployer-20260925.json)
+      address: "0x0196b1fd654fcC5A61fe6E9431b39Be88BB32FFE"
       abi: VaultUpkeep
-      startBlock: 503229824
+      startBlock: 508772145
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -80,10 +80,10 @@ dataSources:
     name: GlobalConfig
     network: arbitrum-one
     source:
-      # EOA test deployment (multyr-core/broadcast/eoa-test-core-addresses.json)
-      address: "0x8fE1cbc7fC2A469B5b5904EA5e5C4D09c583eDD6"
+      # 25 Sep 2026 deployment (multyr-core/broadcast/core-deployer-20260925.json)
+      address: "0x04BA2Be680710B3Fae236bbFe18A5890A3829f98"
       abi: GlobalConfig
-      startBlock: 503229727
+      startBlock: 508771938
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -310,14 +310,47 @@ dataSources:
           handler: handlePeripheryUpkeepPerformed
       file: ./src/mappings.ts
 
+  # ClaimSettlementUpkeep — pays FUNDED epoch claims to their owners
+  - kind: ethereum/contract
+    name: ClaimSettlementUpkeep
+    network: arbitrum-one
+    source:
+      # 25 Sep 2026 deployment (multyr-core/broadcast/claim-deployer-20260925.json)
+      address: "0xD8CE7eA661A7E818337ad87E7bb87b56871da14E"
+      abi: ClaimSettlementUpkeep
+      startBlock: 508775680
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - ClaimSettlementUpkeepEvent
+        - UpkeepAction
+      abis:
+        - name: ClaimSettlementUpkeep
+          file: ./abis/ClaimSettlementUpkeep.json
+      eventHandlers:
+        - event: UpkeepPerformed(indexed uint256,uint256,uint256,bool)
+          handler: handleClaimUpkeepPerformed
+          receipt: true
+        - event: ClaimSettlementFailed(indexed uint256,indexed uint256,uint256)
+          handler: handleClaimSettlementFailed
+        - event: ClaimExcluded(indexed uint256,indexed uint256,bool)
+          handler: handleClaimExcluded
+        - event: CursorSet(uint256,uint256)
+          handler: handleClaimCursorSet
+        - event: BatchSizeConfigured(uint256,uint256)
+          handler: handleClaimBatchSizeConfigured
+      file: ./src/mappings.ts
+
   - kind: ethereum/contract
     name: StrategyUpkeep
     network: arbitrum-one
     source:
-      # EOA test deployment (multyr-strategies/broadcast/eoa-test-strategy-addresses.json)
-      address: "0xd32a464df8e90D8aa9Bc290C4635eCE8D5362550"
+      # 25 Sep 2026 deployment (USDC lending strategy; creation block from Blockscout)
+      address: "0xA01Aa76C782569691Aaf6A0790124Bd3E5Ff3ee6"
       abi: StrategyUpkeep
-      startBlock: 503230946
+      startBlock: 508775176
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -426,6 +459,7 @@ templates:
         - ClaimRequest
         - WithdrawalEpoch
         - WithdrawalEpochEvent
+        - VaultSolvencyEvent
         - User
         - TokenPrice
         - TokenPriceDayData
@@ -562,11 +596,9 @@ templates:
         # =========================================================================
         - event: EpochOpened(indexed uint256,uint64)
           handler: handleEpochOpened
-        - event: EpochWithdrawalRequested(indexed uint256,indexed uint256,indexed address,uint256,uint256,uint256)
+        - event: EpochWithdrawalRequested(indexed uint256,indexed uint256,indexed address,uint256,uint256,uint256,uint256)
           handler: handleEpochWithdrawalRequested
-        - event: EpochWithdrawalCancelled(indexed uint256,indexed uint256,indexed address,uint256)
-          handler: handleEpochWithdrawalCancelled
-        - event: EpochClosed(indexed uint256,uint256,uint256,uint256,uint256)
+        - event: EpochClosed(indexed uint256,uint256,uint256,uint256)
           handler: handleEpochClosed
         - event: EpochFundAttempt(indexed uint256,uint256,uint256,uint256)
           handler: handleEpochFundAttempt
@@ -578,6 +610,26 @@ templates:
           handler: handleQueueEpochFunded
         - event: EpochAssetsClaimed(indexed uint256,indexed uint256,indexed address,uint256,uint256)
           handler: handleEpochAssetsClaimed
+        - event: EpochRecoveryCrystallized(indexed uint256,uint256,uint256,uint256,uint256)
+          handler: handleEpochRecoveryCrystallized
+        - event: EpochFundingNavInvalid(indexed uint256,uint8)
+          handler: handleEpochFundingNavInvalid
+
+        # =========================================================================
+        # Economic exit: instant / force exits and solvency
+        # =========================================================================
+        - event: InstantExit(indexed address,uint256,uint256,uint256)
+          handler: handleInstantExit
+        - event: ForceExit(indexed address,uint256,uint256,uint256)
+          handler: handleForceExit
+        - event: ForceWithdrawAllExecuted(indexed address,indexed address,uint256,uint256,uint256)
+          handler: handleForceWithdrawAllExecuted
+        - event: ForceExitPenaltyTaken(indexed address,uint256,uint256)
+          handler: handleForceExitPenaltyTaken
+        - event: InsolvencyEntered(uint256,uint256,uint256)
+          handler: handleInsolvencyEntered
+        - event: InsolvencyExited(uint256,uint256)
+          handler: handleInsolvencyExited
 
         # =========================================================================
         # Routing / Ops Events
@@ -732,6 +784,26 @@ templates:
           handler: handleWithdrawalsPaused
         - event: WithdrawalsUnpaused()
           handler: handleWithdrawalsUnpaused
+        - event: InstantWithdrawalPaused()
+          handler: handleInstantWithdrawalPaused
+        - event: InstantWithdrawalUnpaused()
+          handler: handleInstantWithdrawalUnpaused
+        - event: QueuedRequestPaused()
+          handler: handleQueuedRequestPaused
+        - event: QueuedRequestUnpaused()
+          handler: handleQueuedRequestUnpaused
+        - event: EpochCloseFundPaused()
+          handler: handleEpochCloseFundPaused
+        - event: EpochCloseFundUnpaused()
+          handler: handleEpochCloseFundUnpaused
+        - event: FundedClaimPaused()
+          handler: handleFundedClaimPaused
+        - event: FundedClaimUnpaused()
+          handler: handleFundedClaimUnpaused
+        - event: ForceExitPaused()
+          handler: handleForceExitPaused
+        - event: ForceExitUnpaused()
+          handler: handleForceExitUnpaused
         - event: GuardianPauseActivated(indexed address,uint256)
           handler: handleGuardianPauseActivated
         - event: GuardianUpdated(indexed address)

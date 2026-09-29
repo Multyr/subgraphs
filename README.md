@@ -50,19 +50,20 @@ Subgraph for indexing Multyr vaults across Arbitrum, Base, and Ethereum.
     └── bootstrap-manifest.json # Canonical values for ops console fallback
 ```
 
-## Active Arbitrum Test Deployment
+## Active Arbitrum Deployment (25 Sep 2026)
 
 | Component | Address | Start block / indexing |
 |-----------|---------|------------------------|
-| VaultFactory | `0x27b5B83E77044817310c14CF62D96be606f79436` | `503229720` |
-| CoreVault | `0x4575Ec0dD1ED08FD4F426665E5B56442594189bb` | dynamic template from factory registration `503229777` |
-| GlobalConfig | `0x8fE1cbc7fC2A469B5b5904EA5e5C4D09c583eDD6` | `503229727` |
-| VaultUpkeep | `0x8672921E03c9995AE1Dbe234A7a08C327163883e` | `503229824` |
-| StrategyRouter | `0x8EeF3Cb022B0d70Fe70a4CA6759C977e5718b8e7` | dynamic template from vault wiring |
-| USDC strategy | `0x2ca30120C828Fc136d348234f7e68116572DD83E` | dynamic template from router registration |
-| StrategyUpkeep | `0xd32a464df8e90D8aa9Bc290C4635eCE8D5362550` | `503230946` |
+| VaultFactory | `0xa762B044C216c699A0bB1d0B7eA169a1716EB62d` | `508771925` |
+| CoreVault | `0x70c8F05fC599e96D1BB9ce6e9dc3e1d72A9A3d01` | dynamic template from factory registration `508772034` |
+| GlobalConfig | `0x04BA2Be680710B3Fae236bbFe18A5890A3829f98` | `508771938` |
+| VaultUpkeep | `0x0196b1fd654fcC5A61fe6E9431b39Be88BB32FFE` | `508772145` |
+| ClaimSettlementUpkeep | `0xD8CE7eA661A7E818337ad87E7bb87b56871da14E` | `508775680` |
+| StrategyRouter | `0x9E3C383092bd98Ce6b821Db5dD51fC5A9ccb231E` | dynamic template from vault wiring |
+| USDC strategy | `0xCC4A4A4CbB5e041ffE6CAc44D6F7F84B6F6cAEf1` | dynamic template from router registration (pending allowlist) |
+| StrategyUpkeep | `0xA01Aa76C782569691Aaf6A0790124Bd3E5Ff3ee6` | `508775176` |
 
-The rewards/referral periphery, incentives engine, and FeeCollectorUpkeep are not deployed in this phase and remain dormant in the Arbitrum manifest. The complete address and exact-block inventory is in `deployments/arbitrum/`.
+This core uses the economic-exit withdrawal model: a withdrawal request burns the net shares and fixes `assetsOwed`, and the epoch is only a settlement bucket. The subgraph books the exit at request (or in the instant/force-exit tx), and a claim only pays it out. The rewards/referral periphery, incentives engine, and FeeCollectorUpkeep are not deployed in this phase and remain dormant in the Arbitrum manifest. The complete address and exact-block inventory is in `deployments/arbitrum/`.
 
 Base and Ethereum use placeholder addresses (not yet deployed).
 

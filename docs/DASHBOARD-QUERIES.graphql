@@ -130,12 +130,15 @@ query WithdrawalEpochs(
     epochClosesAt
     closedAt
     fundedAt
-    ppsAtClose
     totalGrossShares
     totalNetShares
     totalNetAssets
+    totalAssetsOwed
     totalFeeShares
     claimedAssets
+    reservedAssets
+    recoveryIndex
+    writeOffAssets
     lastFundingNeeded
     lastHotBefore
     lastHotAfter

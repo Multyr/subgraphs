@@ -1640,6 +1640,36 @@
   },
   {
     "type": "function",
+    "name": "setDefaultQueue",
+    "inputs": [
+      {
+        "name": "cfg",
+        "type": "tuple",
+        "internalType": "struct GlobalConfig.QueueConfig",
+        "components": [
+          {
+            "name": "maxClaimsPerUserPerEpoch",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "cooldownPerClaim",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "epochDuration",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setDefaultVaultDepositCap",
     "inputs": [
       {
@@ -1920,6 +1950,41 @@
         "name": "maxStaleness_",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setVaultQueueOverride",
+    "inputs": [
+      {
+        "name": "vault",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "cfg",
+        "type": "tuple",
+        "internalType": "struct GlobalConfig.QueueConfig",
+        "components": [
+          {
+            "name": "maxClaimsPerUserPerEpoch",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "cooldownPerClaim",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "epochDuration",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
       }
     ],
     "outputs": [],
@@ -3601,6 +3666,42 @@
         "type": "address",
         "indexed": true,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "VaultQueueOverrideUpdated",
+    "inputs": [
+      {
+        "name": "vault",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "cfg",
+        "type": "tuple",
+        "indexed": false,
+        "internalType": "struct GlobalConfig.QueueConfig",
+        "components": [
+          {
+            "name": "maxClaimsPerUserPerEpoch",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "cooldownPerClaim",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "epochDuration",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
       }
     ],
     "anonymous": false

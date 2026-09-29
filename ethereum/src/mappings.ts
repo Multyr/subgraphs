@@ -10,7 +10,8 @@ import {
 } from "../generated/VaultFactory/VaultFactory"
 
 // Core Events (from Vault.json ABI via VaultTemplate)
-// Note: Vault.json is a merged ABI (CoreVault + EpochedQueueModule + AdminModule)
+// Note: Vault.json is a merged ABI (CoreVault + EpochedQueueModule + AdminModule +
+// ERC4626Module + LiquidityOpsModule)
 // because modules are called via delegatecall and emit events from CoreVault address
 import {
   Deposit as DepositEvent,
@@ -27,13 +28,21 @@ import {
   // Epoched withdrawal queue events
   EpochOpened as EpochOpenedEvent,
   EpochWithdrawalRequested as EpochWithdrawalRequestedEvent,
-  EpochWithdrawalCancelled as EpochWithdrawalCancelledEvent,
   EpochClosed as EpochClosedEvent,
   EpochFundAttempt as EpochFundAttemptEvent,
   EpochFundSkipped as EpochFundSkippedEvent,
   EpochFundingShortfall as EpochFundingShortfallEvent,
   EpochFunded as QueueEpochFundedEvent,
   EpochAssetsClaimed as EpochAssetsClaimedEvent,
+  EpochRecoveryCrystallized as EpochRecoveryCrystallizedEvent,
+  EpochFundingNavInvalid as EpochFundingNavInvalidEvent,
+  // Economic-exit events
+  InsolvencyEntered as InsolvencyEnteredEvent,
+  InsolvencyExited as InsolvencyExitedEvent,
+  InstantExit as InstantExitEvent,
+  ForceExit as ForceExitEvent,
+  ForceExitPenaltyTaken as ForceExitPenaltyTakenEvent,
+  ForceWithdrawAllExecuted as ForceWithdrawAllExecutedEvent,
   // Pause events
   AllPaused as AllPausedEvent,
   AllUnpaused as AllUnpausedEvent,
@@ -41,6 +50,16 @@ import {
   DepositsUnpaused as DepositsUnpausedEvent,
   WithdrawalsPaused as WithdrawalsPausedEvent,
   WithdrawalsUnpaused as WithdrawalsUnpausedEvent,
+  InstantWithdrawalPaused as InstantWithdrawalPausedEvent,
+  InstantWithdrawalUnpaused as InstantWithdrawalUnpausedEvent,
+  QueuedRequestPaused as QueuedRequestPausedEvent,
+  QueuedRequestUnpaused as QueuedRequestUnpausedEvent,
+  EpochCloseFundPaused as EpochCloseFundPausedEvent,
+  EpochCloseFundUnpaused as EpochCloseFundUnpausedEvent,
+  FundedClaimPaused as FundedClaimPausedEvent,
+  FundedClaimUnpaused as FundedClaimUnpausedEvent,
+  ForceExitPaused as ForceExitPausedEvent,
+  ForceExitUnpaused as ForceExitUnpausedEvent,
   GuardianPauseActivated as GuardianPauseActivatedEvent,
   GuardianUpdated as GuardianUpdatedEvent,
   // Fee events
@@ -207,6 +226,15 @@ import {
   VaultUpkeep as VaultUpkeepContract
 } from "../generated/VaultUpkeep/VaultUpkeep"
 
+// ClaimSettlementUpkeep Events
+import {
+  UpkeepPerformed as ClaimUpkeepPerformedEvent,
+  ClaimSettlementFailed as ClaimSettlementFailedEvent,
+  ClaimExcluded as ClaimExcludedEvent,
+  CursorSet as ClaimCursorSetEvent,
+  BatchSizeConfigured as ClaimBatchSizeConfiguredEvent
+} from "../generated/ClaimSettlementUpkeep/ClaimSettlementUpkeep"
+
 // StrategyUpkeep Events
 import {
   UpkeepPerformed as StrategyUpkeepPerformedEvent,
@@ -297,6 +325,8 @@ import {
   ClaimRequest,
   WithdrawalEpoch,
   WithdrawalEpochEvent,
+  VaultSolvencyEvent,
+  ClaimSettlementUpkeepEvent,
   User,
   TokenPrice,
   UpkeepAction,
@@ -442,6 +472,7 @@ import {
   setTransactionClaimId,
   setTransactionReceiver,
   getOrCreateClaimRequest,
+  refreshLiabilityState,
   getOrCreateUser,
   updateUserAggregates
 } from "./helpers/entities"
@@ -769,25 +800,33 @@ export function handleDeposit(event: DepositEvent): void {
 }
 
 /**
- * Handle Withdraw event (ERC-4626)
+ * Record an economic exit: `burnedShares` leave the owner's position and
+ * `assets` become theirs. On the economic-exit core this happens when the
+ * shares are burned -- at request for queued withdrawals (assetsOwed is fixed
+ * there), in the same tx for instant and force exits. Fee shares move to the
+ * FeeCollector through a regular Transfer and are not part of `burnedShares`.
  */
-export function handleWithdraw(event: WithdrawEvent): void {
-  let chainId = getChainIdFromNetwork(dataSource.network())
-  let vaultId = event.address.toHexString().toLowerCase() + "-" + chainId.toString()
-
-  let vault = Vault.load(vaultId)
-  if (vault == null) return
+function recordEconomicExit(
+  event: ethereum.Event,
+  vault: Vault,
+  owner: Address,
+  receiver: Address,
+  burnedShares: BigInt,
+  assets: BigInt,
+  txType: string
+): Transaction {
+  let chainId = vault.chainId
 
   refreshVaultState(vault, event.block)
   let assetPrice = vault.assetPriceUsd
-  let assetsUsd = convertToUsd(event.params.assets, vault.assetDecimals, assetPrice)
+  let assetsUsd = convertToUsd(assets, vault.assetDecimals, assetPrice)
 
-  vault.totalWithdrawals = vault.totalWithdrawals.plus(event.params.assets)
+  vault.totalWithdrawals = vault.totalWithdrawals.plus(assets)
   vault.transactionCount = vault.transactionCount + 1
 
   let dayId = event.block.timestamp.toI32() / SECONDS_PER_DAY
   let dayData = getOrCreateVaultDayData(vault, event.block.timestamp)
-  dayData.withdrawalsAssets = dayData.withdrawalsAssets.plus(event.params.assets)
+  dayData.withdrawalsAssets = dayData.withdrawalsAssets.plus(assets)
   dayData.withdrawalsUsd = addUsd(dayData.withdrawalsUsd, assetsUsd)
   dayData.netFlowAssets = dayData.depositsAssets.minus(dayData.withdrawalsAssets)
   dayData.netFlowUsd = subtractUsd(dayData.depositsUsd, dayData.withdrawalsUsd)
@@ -799,18 +838,13 @@ export function handleWithdraw(event: WithdrawEvent): void {
   vault.save()
 
   // SG-7 — hourly bucket
-  recordHourlyWithdraw(vault, event.block.timestamp, event.params.assets, assetsUsd)
+  recordHourlyWithdraw(vault, event.block.timestamp, assets, assetsUsd)
 
-  let position = getOrCreateUserPosition(event.params.owner, vault, event.block)
-  let fifoResult = consumeSharesFIFO(
-    position,
-    event.params.shares,
-    event.params.assets,
-    assetPrice
-  )
+  let position = getOrCreateUserPosition(owner, vault, event.block)
+  let fifoResult = consumeSharesFIFO(position, burnedShares, assets, assetPrice)
 
-  position.shares = position.shares.minus(event.params.shares)
-  position.totalWithdrawnAssets = position.totalWithdrawnAssets.plus(event.params.assets)
+  position.shares = position.shares.minus(burnedShares)
+  position.totalWithdrawnAssets = position.totalWithdrawnAssets.plus(assets)
   position.totalWithdrawnUsd = addUsd(position.totalWithdrawnUsd, assetsUsd)
   position.netDepositedAssets = position.totalDepositedAssets.minus(position.totalWithdrawnAssets)
   position.netDepositedUsd = subtractUsd(position.totalDepositedUsd, position.totalWithdrawnUsd)
@@ -829,22 +863,22 @@ export function handleWithdraw(event: WithdrawEvent): void {
   let positionDayData = getOrCreateUserPositionDayData(position, vault, event.block.timestamp)
   positionDayData.save()
 
-  let user = getOrCreateUser(event.params.owner, event.block)
+  let user = getOrCreateUser(owner, event.block)
   user.totalAssetsUsd = subtractUsd(user.totalAssetsUsd, assetsUsd)
   user.totalRealizedPnlUsd = addUsd(user.totalRealizedPnlUsd, fifoResult.realizedPnlUsd)
   updateUserAggregates(user, event.block)
 
-  let withdrawTx = createTransaction(
+  let tx = createTransaction(
     event.transaction.hash,
     event.logIndex,
-    "WITHDRAW",
+    txType,
     vault,
-    event.params.owner,
-    event.params.shares,
-    event.params.assets,
+    owner,
+    burnedShares,
+    assets,
     event.block
   )
-  setTransactionReceiver(withdrawTx, event.params.receiver)
+  setTransactionReceiver(tx, receiver)
 
   let factoryEntity = VaultFactory.load(vault.factory!)
   if (factoryEntity != null) {
@@ -860,6 +894,33 @@ export function handleWithdraw(event: WithdrawEvent): void {
     protocolEntity.updatedAt = event.block.timestamp
     protocolEntity.save()
   }
+
+  return tx
+}
+
+/**
+ * Handle Withdraw event (ERC-4626)
+ *
+ * The economic-exit core disables withdraw()/redeem(); its only Withdraw is the
+ * one EpochedQueueModule emits on claim payout with sender == the vault. That
+ * exit was already recorded at request, and the payout is handled by
+ * handleEpochAssetsClaimed, so it is skipped here to avoid double counting.
+ */
+export function handleWithdraw(event: WithdrawEvent): void {
+  if (event.params.sender.equals(event.address)) return
+
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  recordEconomicExit(
+    event,
+    vault,
+    event.params.owner,
+    event.params.receiver,
+    event.params.shares,
+    event.params.assets,
+    "WITHDRAW"
+  )
 }
 
 /**
@@ -982,6 +1043,7 @@ function getOrCreateWithdrawalEpoch(
     epoch.totalGrossShares = ZERO_BI
     epoch.totalNetShares = ZERO_BI
     epoch.totalNetAssets = ZERO_BI
+    epoch.totalAssetsOwed = ZERO_BI
     epoch.totalFeeShares = ZERO_BI
     epoch.claimCount = ZERO_BI
     epoch.cancelledClaimCount = ZERO_BI
@@ -1060,15 +1122,17 @@ export function handleEpochOpened(event: EpochOpenedEvent): void {
   entity.save()
 }
 
+/**
+ * Economic exit at request: the fee shares go to the FeeCollector (Transfer),
+ * the net shares are burned and `assetsOwed` is fixed -- never re-priced. The
+ * exit is recorded here; the later claim only pays it out.
+ */
 export function handleEpochWithdrawalRequested(event: EpochWithdrawalRequestedEvent): void {
   let vault = Vault.load(getVaultId(event.address))
   if (vault == null) return
 
   let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
-  let estimatedAssets = ZERO_BI
-  if (vault.totalSupply.gt(ZERO_BI)) {
-    estimatedAssets = event.params.netShares.times(vault.totalAssets).div(vault.totalSupply)
-  }
+  let assetsOwed = event.params.assetsOwed
 
   let claim = getOrCreateEpochClaim(
     vault, epoch, event.params.claimId, event.params.user, event.block
@@ -1078,8 +1142,9 @@ export function handleEpochWithdrawalRequested(event: EpochWithdrawalRequestedEv
   claim.grossShares = event.params.grossShares
   claim.netShares = event.params.netShares
   claim.feeShares = event.params.feeShares
-  claim.assets = estimatedAssets
-  claim.assetsEstimated = estimatedAssets
+  claim.assets = assetsOwed
+  claim.assetsEstimated = assetsOwed
+  claim.assetsOwed = assetsOwed
   claim.status = "PENDING"
   claim.requestedAt = event.block.timestamp
   claim.requestTxHash = event.transaction.hash
@@ -1088,6 +1153,8 @@ export function handleEpochWithdrawalRequested(event: EpochWithdrawalRequestedEv
   epoch.totalGrossShares = epoch.totalGrossShares.plus(event.params.grossShares)
   epoch.totalNetShares = epoch.totalNetShares.plus(event.params.netShares)
   epoch.totalFeeShares = epoch.totalFeeShares.plus(event.params.feeShares)
+  epoch.totalAssetsOwed = epoch.totalAssetsOwed.plus(assetsOwed)
+  epoch.totalNetAssets = epoch.totalAssetsOwed
   epoch.claimCount = epoch.claimCount.plus(BigInt.fromI32(1))
   epoch.updatedAt = event.block.timestamp
   epoch.save()
@@ -1098,67 +1165,21 @@ export function handleEpochWithdrawalRequested(event: EpochWithdrawalRequestedEv
   entity.grossShares = event.params.grossShares
   entity.netShares = event.params.netShares
   entity.feeShares = event.params.feeShares
+  entity.assetsOwed = assetsOwed
   entity.save()
 
-  let tx = createTransaction(
-    event.transaction.hash,
-    event.logIndex,
-    "CLAIM_REQUEST",
+  let tx = recordEconomicExit(
+    event,
     vault,
     event.params.user,
-    event.params.grossShares,
-    estimatedAssets,
-    event.block
-  )
-  setTransactionClaimId(tx, event.params.claimId)
-  vault.transactionCount = vault.transactionCount + 1
-  vault.save()
-}
-
-export function handleEpochWithdrawalCancelled(event: EpochWithdrawalCancelledEvent): void {
-  let vault = Vault.load(getVaultId(event.address))
-  if (vault == null) return
-
-  let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
-  let claim = getOrCreateEpochClaim(
-    vault, epoch, event.params.claimId, event.params.user, event.block
-  )
-  claim.status = "CANCELLED"
-  claim.cancelledAt = event.block.timestamp
-  claim.cancelTxHash = event.transaction.hash
-  claim.save()
-
-  if (epoch.totalGrossShares.ge(claim.grossShares)) {
-    epoch.totalGrossShares = epoch.totalGrossShares.minus(claim.grossShares)
-  }
-  if (epoch.totalNetShares.ge(claim.netShares)) {
-    epoch.totalNetShares = epoch.totalNetShares.minus(claim.netShares)
-  }
-  if (epoch.totalFeeShares.ge(claim.feeShares)) {
-    epoch.totalFeeShares = epoch.totalFeeShares.minus(claim.feeShares)
-  }
-  epoch.cancelledClaimCount = epoch.cancelledClaimCount.plus(BigInt.fromI32(1))
-  epoch.updatedAt = event.block.timestamp
-  epoch.save()
-
-  let entity = createWithdrawalEpochEvent(event, vault, epoch, "WITHDRAWAL_CANCELLED")
-  entity.claimId = event.params.claimId
-  entity.user = event.params.user
-  entity.sharesReturned = event.params.sharesReturned
-  entity.save()
-
-  let tx = createTransaction(
-    event.transaction.hash,
-    event.logIndex,
-    "CLAIM_CANCEL",
-    vault,
     event.params.user,
-    event.params.sharesReturned,
-    ZERO_BI,
-    event.block
+    event.params.netShares,
+    assetsOwed,
+    "CLAIM_REQUEST"
   )
   setTransactionClaimId(tx, event.params.claimId)
-  vault.transactionCount = vault.transactionCount + 1
+
+  refreshLiabilityState(vault)
   vault.save()
 }
 
@@ -1167,22 +1188,26 @@ export function handleEpochClosed(event: EpochClosedEvent): void {
   if (vault == null) return
 
   let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  // Settlement bucket only: claims were priced at request, close sets no price.
   epoch.state = "CLOSED"
   epoch.closedAt = event.block.timestamp
-  epoch.ppsAtClose = event.params.ppsAtClose
   epoch.totalNetShares = event.params.totalNetShares
-  epoch.totalNetAssets = event.params.totalNetAssets
+  epoch.totalAssetsOwed = event.params.totalAssetsOwed
+  epoch.totalNetAssets = event.params.totalAssetsOwed
   epoch.totalFeeShares = event.params.totalFeeShares
   epoch.totalGrossShares = event.params.totalNetShares.plus(event.params.totalFeeShares)
   epoch.updatedAt = event.block.timestamp
   epoch.save()
 
   let entity = createWithdrawalEpochEvent(event, vault, epoch, "CLOSED")
-  entity.ppsAtClose = event.params.ppsAtClose
   entity.totalNetShares = event.params.totalNetShares
-  entity.totalNetAssets = event.params.totalNetAssets
+  entity.totalAssetsOwed = event.params.totalAssetsOwed
+  entity.totalNetAssets = event.params.totalAssetsOwed
   entity.totalFeeShares = event.params.totalFeeShares
   entity.save()
+
+  refreshLiabilityState(vault)
+  vault.save()
 }
 
 export function handleEpochFundAttempt(event: EpochFundAttemptEvent): void {
@@ -1240,15 +1265,53 @@ export function handleQueueEpochFunded(event: QueueEpochFundedEvent): void {
   if (vault == null) return
 
   let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  // The ABI names this param totalAssetsOwed; the core emits the cohort's
+  // reservedRemaining (nominal x recoveryIndex), i.e. the cash earmarked for it.
   epoch.state = "FUNDED"
   epoch.fundedAt = event.block.timestamp
-  epoch.totalNetAssets = event.params.totalNetAssets
+  epoch.reservedAssets = event.params.totalAssetsOwed
   epoch.lastShortfall = ZERO_BI
   epoch.updatedAt = event.block.timestamp
   epoch.save()
 
   let entity = createWithdrawalEpochEvent(event, vault, epoch, "FUNDED")
-  entity.totalNetAssets = event.params.totalNetAssets
+  entity.assets = event.params.totalAssetsOwed
+  entity.save()
+
+  refreshLiabilityState(vault)
+  vault.save()
+}
+
+export function handleEpochRecoveryCrystallized(event: EpochRecoveryCrystallizedEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  epoch.recoveryIndex = event.params.recoveryIndex
+  epoch.recoveredAssets = event.params.recovered
+  epoch.writeOffAssets = event.params.writeOff
+  epoch.updatedAt = event.block.timestamp
+  epoch.save()
+
+  let entity = createWithdrawalEpochEvent(event, vault, epoch, "RECOVERY_CRYSTALLIZED")
+  entity.recoveryIndex = event.params.recoveryIndex
+  entity.unclaimed = event.params.unclaimed
+  entity.recovered = event.params.recovered
+  entity.writeOff = event.params.writeOff
+  entity.save()
+}
+
+export function handleEpochFundingNavInvalid(event: EpochFundingNavInvalidEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  let epoch = getOrCreateWithdrawalEpoch(vault, event.params.epochId, event.block)
+  epoch.lastNavInvalidReason = event.params.reason
+  epoch.updatedAt = event.block.timestamp
+  epoch.save()
+
+  let entity = createWithdrawalEpochEvent(event, vault, epoch, "FUNDING_NAV_INVALID")
+  entity.navInvalidReason = event.params.reason
   entity.save()
 }
 
@@ -1260,13 +1323,32 @@ export function handleEpochAssetsClaimed(event: EpochAssetsClaimedEvent): void {
   let claim = getOrCreateEpochClaim(
     vault, epoch, event.params.claimId, event.params.user, event.block
   )
-  claim.netShares = event.params.netShares
-  claim.assets = event.params.assets
-  claim.assetsReceived = event.params.assets
+  let assetsOwed = event.params.assetsOwed
+  let paid = event.params.assets
+  let recoveryLoss = assetsOwed.gt(paid) ? assetsOwed.minus(paid) : ZERO_BI
+  claim.assetsOwed = assetsOwed
+  claim.assets = paid
+  claim.assetsReceived = paid
+  claim.recoveryLoss = recoveryLoss
   claim.status = "SETTLED"
   claim.settledAt = event.block.timestamp
   claim.settleTxHash = event.transaction.hash
   claim.save()
+
+  // The exit was booked at request for the full assetsOwed. A cohort that
+  // recovered < 100% pays less: take the haircut back out of the position.
+  if (recoveryLoss.gt(ZERO_BI)) {
+    let position = getOrCreateUserPosition(event.params.user, vault, event.block)
+    let lossUsd = convertToUsd(recoveryLoss, vault.assetDecimals, vault.assetPriceUsd)
+    position.totalWithdrawnAssets = position.totalWithdrawnAssets.minus(recoveryLoss)
+    position.totalWithdrawnUsd = subtractUsd(position.totalWithdrawnUsd, lossUsd)
+    position.netDepositedAssets = position.totalDepositedAssets.minus(position.totalWithdrawnAssets)
+    position.netDepositedUsd = subtractUsd(position.totalDepositedUsd, position.totalWithdrawnUsd)
+    position.realizedPnlAssets = position.realizedPnlAssets.minus(recoveryLoss)
+    position.realizedPnlUsd = subtractUsd(position.realizedPnlUsd, lossUsd)
+    position.updatedAt = event.block.timestamp
+    position.save()
+  }
 
   epoch.claimedCount = epoch.claimedCount.plus(BigInt.fromI32(1))
   epoch.claimedAssets = epoch.claimedAssets.plus(event.params.assets)
@@ -1277,7 +1359,7 @@ export function handleEpochAssetsClaimed(event: EpochAssetsClaimedEvent): void {
   entity.claimId = event.params.claimId
   entity.user = event.params.user
   entity.assets = event.params.assets
-  entity.netShares = event.params.netShares
+  entity.assetsOwed = assetsOwed
   entity.save()
 
   let tx = createTransaction(
@@ -1293,6 +1375,7 @@ export function handleEpochAssetsClaimed(event: EpochAssetsClaimedEvent): void {
   setTransactionReceiver(tx, event.params.user)
   setTransactionClaimId(tx, event.params.claimId)
   vault.transactionCount = vault.transactionCount + 1
+  refreshLiabilityState(vault)
   vault.save()
 }
 
@@ -1652,16 +1735,149 @@ export function handleForceWithdrawExecuted(event: ForceWithdrawExecutedEvent): 
   forceWithdraw.receiver = event.params.receiver
   forceWithdraw.assets = event.params.assets
   forceWithdraw.sharesSpent = event.params.sharesSpent
+  forceWithdraw.isWithdrawAll = false
   forceWithdraw.timestamp = event.block.timestamp
   forceWithdraw.blockNumber = event.block.number
   forceWithdraw.txHash = event.transaction.hash
   forceWithdraw.save()
+  // Flows and the user's position are recorded by handleForceExit (same tx).
+}
 
-  // Update vault stats
-  vault.totalWithdrawals = vault.totalWithdrawals.plus(event.params.assets)
-  vault.transactionCount = vault.transactionCount + 1
+export function handleForceWithdrawAllExecuted(event: ForceWithdrawAllExecutedEvent): void {
+  let vaultId = getVaultId(event.address)
+  let vault = Vault.load(vaultId)
+  if (vault == null) return
+
+  let forceWithdraw = new ForceWithdrawEvent(createEventId(event.transaction.hash, event.logIndex))
+  forceWithdraw.vault = vaultId
+  forceWithdraw.chainId = vault.chainId
+  forceWithdraw.caller = event.params.caller
+  forceWithdraw.owner = event.params.caller
+  forceWithdraw.receiver = event.params.receiver
+  forceWithdraw.assets = event.params.assetsReceived
+  forceWithdraw.sharesSpent = event.params.sharesBurned
+  forceWithdraw.targetAssets = event.params.targetAssets
+  forceWithdraw.isWithdrawAll = true
+  forceWithdraw.timestamp = event.block.timestamp
+  forceWithdraw.blockNumber = event.block.number
+  forceWithdraw.txHash = event.transaction.hash
+  forceWithdraw.save()
+  // Flows and the user's position are recorded by handleForceExit (same tx).
+}
+
+/**
+ * ForceExit(user, shares, netAssets, feeShares) closes both forceWithdraw and
+ * forceWithdrawAll. `shares` includes the fee shares already moved to the
+ * FeeCollector by Transfer; only the remainder is burned.
+ */
+export function handleForceExit(event: ForceExitEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+  if (event.params.shares.equals(ZERO_BI) && event.params.netAssets.equals(ZERO_BI)) return
+
+  let burned = event.params.shares.minus(event.params.feeShares)
+  recordEconomicExit(
+    event,
+    vault,
+    event.params.user,
+    event.params.user,
+    burned,
+    event.params.netAssets,
+    "FORCE_WITHDRAW"
+  )
+  refreshLiabilityState(vault)
+  vault.save()
+}
+
+/**
+ * InstantExit(user, shares, assetsOwed, feeShares): cap-eligible request
+ * settled in the same tx. An instant request that falls back to the queue
+ * emits EpochWithdrawalRequested instead.
+ */
+export function handleInstantExit(event: InstantExitEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  let burned = event.params.shares.minus(event.params.feeShares)
+  recordEconomicExit(
+    event,
+    vault,
+    event.params.user,
+    event.params.user,
+    burned,
+    event.params.netAssets,
+    "INSTANT_WITHDRAW"
+  )
+  refreshLiabilityState(vault)
+  vault.save()
+}
+
+export function handleForceExitPenaltyTaken(event: ForceExitPenaltyTakenEvent): void {
+  let vaultId = getVaultId(event.address)
+  let vault = Vault.load(vaultId)
+  if (vault == null) return
+
+  let feeEvent = new FeeEvent(createEventId(event.transaction.hash, event.logIndex))
+  feeEvent.vault = vaultId
+  feeEvent.chainId = vault.chainId
+  feeEvent.type = "FORCE_EXIT_PENALTY"
+  feeEvent.sender = event.params.sender
+  feeEvent.assetsFee = event.params.penaltyAssets
+  feeEvent.sharesToTreasury = event.params.penaltyShares
+  feeEvent.timestamp = event.block.timestamp
+  feeEvent.blockNumber = event.block.number
+  feeEvent.txHash = event.transaction.hash
+  feeEvent.save()
+}
+
+// =============================================================================
+// SOLVENCY (economic-exit core: insolvent while grossAssets < totalOwed)
+// =============================================================================
+
+function createSolvencyEvent(event: ethereum.Event, vault: Vault, type: string): VaultSolvencyEvent {
+  let entity = new VaultSolvencyEvent(createEventId(event.transaction.hash, event.logIndex))
+  entity.vault = vault.id
+  entity.chainId = vault.chainId
+  entity.type = type
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  return entity
+}
+
+export function handleInsolvencyEntered(event: InsolvencyEnteredEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  vault.isInsolvent = true
+  vault.grossAssets = event.params.grossAssets
+  vault.totalOwed = event.params.totalOwed
+  vault.liabilityIndex = event.params.liabilityIndex
   vault.updatedAt = event.block.timestamp
   vault.save()
+
+  let entity = createSolvencyEvent(event, vault, "ENTERED")
+  entity.grossAssets = event.params.grossAssets
+  entity.totalOwed = event.params.totalOwed
+  entity.liabilityIndex = event.params.liabilityIndex
+  entity.save()
+}
+
+export function handleInsolvencyExited(event: InsolvencyExitedEvent): void {
+  let vault = Vault.load(getVaultId(event.address))
+  if (vault == null) return
+
+  vault.isInsolvent = false
+  vault.grossAssets = event.params.grossAssets
+  vault.totalOwed = event.params.totalOwed
+  vault.liabilityIndex = ONE_E18
+  vault.updatedAt = event.block.timestamp
+  vault.save()
+
+  let entity = createSolvencyEvent(event, vault, "EXITED")
+  entity.grossAssets = event.params.grossAssets
+  entity.totalOwed = event.params.totalOwed
+  entity.save()
 }
 
 export function handleCrystallized(event: CrystallizedEvent): void {
@@ -2548,6 +2764,57 @@ export function handleWithdrawalsUnpaused(event: WithdrawalsUnpausedEvent): void
   }
 }
 
+// Economic-exit granular breakers. They gate one exit path each and leave
+// withdrawalsEnabled (the WITHDRAWALS scope) untouched.
+function setScopedPause(address: Address, scope: string, paused: boolean, event: ethereum.Event): void {
+  let vault = Vault.load(getVaultId(address))
+  if (vault == null) return
+  if (paused) openPause(vault, scope, event, false)
+  else closePause(vault, scope, event)
+  vault.updatedAt = event.block.timestamp
+  vault.save()
+}
+
+export function handleInstantWithdrawalPaused(event: InstantWithdrawalPausedEvent): void {
+  setScopedPause(event.address, "INSTANT_WITHDRAWALS", true, event)
+}
+
+export function handleInstantWithdrawalUnpaused(event: InstantWithdrawalUnpausedEvent): void {
+  setScopedPause(event.address, "INSTANT_WITHDRAWALS", false, event)
+}
+
+export function handleQueuedRequestPaused(event: QueuedRequestPausedEvent): void {
+  setScopedPause(event.address, "QUEUED_REQUESTS", true, event)
+}
+
+export function handleQueuedRequestUnpaused(event: QueuedRequestUnpausedEvent): void {
+  setScopedPause(event.address, "QUEUED_REQUESTS", false, event)
+}
+
+export function handleEpochCloseFundPaused(event: EpochCloseFundPausedEvent): void {
+  setScopedPause(event.address, "EPOCH_CLOSE_FUND", true, event)
+}
+
+export function handleEpochCloseFundUnpaused(event: EpochCloseFundUnpausedEvent): void {
+  setScopedPause(event.address, "EPOCH_CLOSE_FUND", false, event)
+}
+
+export function handleFundedClaimPaused(event: FundedClaimPausedEvent): void {
+  setScopedPause(event.address, "FUNDED_CLAIMS", true, event)
+}
+
+export function handleFundedClaimUnpaused(event: FundedClaimUnpausedEvent): void {
+  setScopedPause(event.address, "FUNDED_CLAIMS", false, event)
+}
+
+export function handleForceExitPaused(event: ForceExitPausedEvent): void {
+  setScopedPause(event.address, "FORCE_EXIT", true, event)
+}
+
+export function handleForceExitUnpaused(event: ForceExitUnpausedEvent): void {
+  setScopedPause(event.address, "FORCE_EXIT", false, event)
+}
+
 export function handleGuardianPauseActivated(event: GuardianPauseActivatedEvent): void {
   let vaultId = getVaultId(event.address)
   let vault = Vault.load(vaultId)
@@ -2726,12 +2993,12 @@ export function handleStrategyRegistered(event: StrategyRegisteredEvent): void {
   strategy.enabled = true
   strategy.totalAssets = ZERO_BI
 
-  // Read strategy metadata on-chain (name, description)
+  // Read strategy metadata on-chain. The current strategy no longer exposes
+  // description(), so it stays null.
   let strategyContract = StrategyContract.bind(event.params.strat)
   let nameResult = strategyContract.try_name()
   strategy.name = nameResult.reverted ? null : nameResult.value
-  let descResult = strategyContract.try_description()
-  strategy.description = descResult.reverted ? null : descResult.value
+  strategy.description = null
 
   // Initialize harvest telemetry fields
   strategy.totalHarvestCount = ZERO_BI
@@ -3660,6 +3927,74 @@ export function handleVaultRoutingConfigured(event: VaultRoutingConfiguredEvent)
     vdRc.updatedAtBlock = event.block.number
     vdRc.save()
   }
+}
+
+// =============================================================================
+// CLAIM SETTLEMENT UPKEEP EVENT HANDLERS
+// =============================================================================
+
+function createClaimSettlementEvent(event: ethereum.Event, type: string): ClaimSettlementUpkeepEvent {
+  let entity = new ClaimSettlementUpkeepEvent(createEventId(event.transaction.hash, event.logIndex))
+  entity.chainId = getChainIdFromNetwork(dataSource.network())
+  entity.upkeep = event.address
+  entity.type = type
+  entity.timestamp = event.block.timestamp
+  entity.blockNumber = event.block.number
+  entity.txHash = event.transaction.hash
+  return entity
+}
+
+export function handleClaimUpkeepPerformed(event: ClaimUpkeepPerformedEvent): void {
+  let entity = createClaimSettlementEvent(event, "PERFORMED")
+  entity.epochId = event.params.epochId
+  entity.claimCount = event.params.claimCount
+  entity.totalSettled = event.params.totalSettled
+  entity.success = event.params.success
+  entity.save()
+
+  let action = new UpkeepAction(createEventId(event.transaction.hash, event.logIndex))
+  action.chainId = entity.chainId
+  action.upkeep = event.address
+  action.op = 0
+  action.opType = "CLAIM_SETTLE"
+  action.upkeepKind = "CLAIM_SETTLEMENT"
+  action.arg = event.params.epochId
+  action.success = event.params.success
+  setUpkeepGas(action, event)
+  action.timestamp = event.block.timestamp
+  action.blockNumber = event.block.number
+  action.txHash = event.transaction.hash
+  action.save()
+}
+
+export function handleClaimSettlementFailed(event: ClaimSettlementFailedEvent): void {
+  let entity = createClaimSettlementEvent(event, "CLAIM_FAILED")
+  entity.epochId = event.params.epochId
+  entity.claimId = event.params.claimId
+  entity.retryAt = event.params.retryAt
+  entity.save()
+}
+
+export function handleClaimExcluded(event: ClaimExcludedEvent): void {
+  let entity = createClaimSettlementEvent(event, "CLAIM_EXCLUDED")
+  entity.epochId = event.params.epochId
+  entity.claimId = event.params.claimId
+  entity.excluded = event.params.excludedNow
+  entity.save()
+}
+
+export function handleClaimCursorSet(event: ClaimCursorSetEvent): void {
+  let entity = createClaimSettlementEvent(event, "CURSOR_SET")
+  entity.epochId = event.params.epochId
+  entity.claimId = event.params.claimId
+  entity.save()
+}
+
+export function handleClaimBatchSizeConfigured(event: ClaimBatchSizeConfiguredEvent): void {
+  let entity = createClaimSettlementEvent(event, "BATCH_CONFIGURED")
+  entity.maxClaimsPerUpkeep = event.params.maxClaimsPerUpkeep
+  entity.maxScanPerUpkeep = event.params.maxScanPerUpkeep
+  entity.save()
 }
 
 // =============================================================================

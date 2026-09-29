@@ -6,23 +6,34 @@ import { getChainIdFromNetwork } from "./constants"
 // SG-9 — vault pause history with duration
 // =============================================================================
 // The core emits DepositsPaused/Unpaused, WithdrawalsPaused/Unpaused,
-// AllPaused/Unpaused and GuardianPauseActivated. The mappings previously only
+// AllPaused/Unpaused, GuardianPauseActivated and the economic-exit granular
+// breakers (instant / queued-request / epoch close+fund / funded-claim / force-exit). The mappings previously only
 // mutated current Vault flags. This tracks an open/close record per (vault,
 // scope) so "how many times and for how long has this vault been paused" is
 // answerable.
 //
 // Vault carries a pointer to the currently-open record per scope
-// (activeAllPause / activeDepositsPause / activeWithdrawalsPause).
+// (activeAllPause / activeDepositsPause / activeWithdrawalsPause / ...).
 
 function activePtr(vault: Vault, scope: string): string | null {
   if (scope == "ALL") return vault.activeAllPause
   if (scope == "DEPOSITS") return vault.activeDepositsPause
+  if (scope == "INSTANT_WITHDRAWALS") return vault.activeInstantWithdrawalsPause
+  if (scope == "QUEUED_REQUESTS") return vault.activeQueuedRequestsPause
+  if (scope == "EPOCH_CLOSE_FUND") return vault.activeEpochCloseFundPause
+  if (scope == "FUNDED_CLAIMS") return vault.activeFundedClaimsPause
+  if (scope == "FORCE_EXIT") return vault.activeForceExitPause
   return vault.activeWithdrawalsPause
 }
 
 function setActivePtr(vault: Vault, scope: string, id: string | null): void {
   if (scope == "ALL") vault.activeAllPause = id
   else if (scope == "DEPOSITS") vault.activeDepositsPause = id
+  else if (scope == "INSTANT_WITHDRAWALS") vault.activeInstantWithdrawalsPause = id
+  else if (scope == "QUEUED_REQUESTS") vault.activeQueuedRequestsPause = id
+  else if (scope == "EPOCH_CLOSE_FUND") vault.activeEpochCloseFundPause = id
+  else if (scope == "FUNDED_CLAIMS") vault.activeFundedClaimsPause = id
+  else if (scope == "FORCE_EXIT") vault.activeForceExitPause = id
   else vault.activeWithdrawalsPause = id
 }
 

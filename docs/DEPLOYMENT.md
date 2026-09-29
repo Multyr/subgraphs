@@ -1,19 +1,27 @@
 # Multyr Vault Subgraph - Deployment Documentation
 
-> **Version:** 3.2 (EOA Arbitrum test deployment + EpochedQueueModule)
-> **Last Updated:** 2026-09-10
+> **Version:** 3.3 (25 Sep 2026 Arbitrum deployment + economic-exit withdrawals)
+> **Last Updated:** 2026-09-29
 
 ## v3 dashboard work order (SG-1…SG-16)
 
 See `docs/DASHBOARD-QUERIES.graphql` (canonical query set) and `docs/CROSS-CHAIN.md`.
 
 - **Address source of truth:** `deployments/<chain>/*.json`. `arbitrum/subgraph.yaml`
-  points at the EOA-controlled test deployment recorded by the current Foundry
-  broadcasts. Start blocks are exact receipt block numbers: factory `503229720`,
-  GlobalConfig `503229727`, VaultUpkeep `503229824`, StrategyUpkeep `503230946`.
+  points at the 25 Sep 2026 deployment (multyr-core `core-deployer-20260925.json`,
+  `claim-deployer-20260925.json`). Start blocks are exact receipt block numbers:
+  factory `508771925`, GlobalConfig `508771938`, VaultUpkeep `508772145`,
+  ClaimSettlementUpkeep `508775680`, StrategyUpkeep `508775176`.
 - **Dynamic sources:** CoreVault is created from the factory registration event
-  at block `503229777`; StrategyRouter is created from vault wiring; the USDC
+  at block `508772034`; StrategyRouter is created from vault wiring; the USDC
   strategy is created from the router's `StrategyRegistered` event.
+- **Withdrawal model (economic exit):** a request burns the net shares and fixes
+  `assetsOwed` (`EpochWithdrawalRequested`), so the exit is booked on the user's
+  position at request. Instant (`InstantExit`) and force exits (`ForceExit`) are
+  booked in their own tx. Claims (`EpochAssetsClaimed`) only pay out, and a
+  cohort that recovered < 100% (`EpochRecoveryCrystallized`) books the haircut
+  as a realized loss. The claim-payout `Withdraw` (sender == vault) is skipped
+  to avoid double counting. There is no cancel and no `ppsAtClose` any more.
 - **Undeployed sources:** rewards/referral periphery, incentives, and
   FeeCollectorUpkeep remain dormant. Do not replace them with guessed addresses.
 - **base / ethereum manifests are still stubbed** (dead addresses). Activate them

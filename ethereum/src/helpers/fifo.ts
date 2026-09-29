@@ -88,12 +88,9 @@ export function consumeSharesFIFO(
 
   let remainingShares = sharesToConsume
 
-  // Value per share being withdrawn (shares before withdrawal in the denominator)
-  let totalShares = position.shares.plus(sharesToConsume)
-  let valuePerShare = ZERO_BI
-  if (totalShares.gt(ZERO_BI)) {
-    valuePerShare = currentAssetValue.times(ONE_E18).div(totalShares)
-  }
+  // Value per share being withdrawn: currentAssetValue is what the consumed
+  // shares exited for, not the value of the whole position.
+  let valuePerShare = currentAssetValue.times(ONE_E18).div(sharesToConsume)
 
   let lotIndex = position.firstActiveLotIndex
   while (remainingShares.gt(ZERO_BI) && lotIndex < position.lotCounter) {
