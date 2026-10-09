@@ -18,7 +18,8 @@ enum TransactionType {
   TRANSFER
   CLAIM
   CLAIM_REQUEST
-  CLAIM_CANCEL
+  CLAIM_CANCEL        # legacy: economic-exit core has no cancel
+  INSTANT_WITHDRAW    # EpochedQueueModule InstantExit (paid in the request tx)
 }
 
 # Vault status
@@ -38,9 +39,45 @@ enum StrategyState {
 # Price status for USD values
 enum PriceStatus {
   VALID           # Price from Chainlink oracle
-  STALE           # Price older than threshold (e.g., 1 hour)
+  STALE           # Price older than the configured threshold (currently 24 hours)
   FALLBACK        # Using hardcoded fallback (1.0 for stablecoins)
-  MISSING         # No price source available - USD values are 0
+  MISSING         # No price source available - USD values are null
+}
+
+# Which automation contract an UpkeepAction came from (SG-3)
+enum UpkeepKind {
+  VAULT           # multyr-core VaultUpkeep
+  STRATEGY        # multyr-strategies LendingStrategyUpkeep / MultiplyStrategyUpkeep
+  PERIPHERY       # PeripheryUpkeepAdapter (rewards pipeline)
+  FEE_COLLECTOR   # FeeCollectorUpkeep
+  CLAIM_SETTLEMENT # multyr-core ClaimSettlementUpkeep
+}
+
+# Decoded on-chain upkeep operation (SG-3).
+# VaultUpkeep.Op        (multyr-core/src/automation/VaultUpkeep.sol)
+# LendingStrategyUpkeep OP_* constants (multyr-strategies)
+# PeripheryUpkeepAdapter PeripheryOp
+enum UpkeepOpType {
+  NONE
+  EPOCH_CLOSE
+  EPOCH_FUND
+  CRYSTALLIZE
+  REBALANCE
+  DEPLOY
+  REALIZE
+  RECONCILE
+  STRATEGY_REBALANCE
+  HARVEST
+  POKE_APY
+  DEPLOY_IDLE
+  PREPARE_REBALANCE
+  EXECUTE_REBALANCE_STEP
+  PERIPHERY_SPLIT
+  PERIPHERY_REDEEM
+  PERIPHERY_FUND
+  FEE_DISTRIBUTION
+  CLAIM_SETTLE
+  UNKNOWN
 }
 
 # =============================================================================
@@ -53,7 +90,8 @@ type Protocol @entity {
   chainId: Int!
   factoryAddress: Bytes!
   totalVaults: Int!
-  totalTvlUsd: BigDecimal!
+  totalTvlUsd: BigDecimal
+  priceStatus: PriceStatus!
   totalUsers: Int!
   updatedAt: BigInt!
 }
@@ -64,7 +102,8 @@ type VaultFactory @entity {
   address: Bytes!
   chainId: Int!
   vaultCount: Int!
-  totalTvlUsd: BigDecimal!
+  totalTvlUsd: BigDecimal
+  priceStatus: PriceStatus!
   vaults: [Vault!]! @derivedFrom(field: "factory")
   createdAt: BigInt!
   createdAtBlock: BigInt!
@@ -99,20 +138,34 @@ type Vault @entity {
   sharePrice: BigInt!
 
   # USD values (updated via oracle or config)
-  tvlUsd: BigDecimal!
-  assetPriceUsd: BigDecimal!
+  tvlUsd: BigDecimal
+  assetPriceUsd: BigDecimal
   priceStatus: PriceStatus!
 
   # Performance metrics (computed from day data)
   apy1d: BigDecimal!
   apy7d: BigDecimal!
   apy30d: BigDecimal!
+  apy: BigDecimal!              # 30-day headline alias
+  netApy1d: BigDecimal!         # net of perfRateX; deposit/exit fee drag remains user-specific
+  netApy7d: BigDecimal!
+  netApy30d: BigDecimal!
+  netApy: BigDecimal!           # 30-day headline alias
 
   # Vault configuration
   depositFeeBps: Int!
   withdrawFeeBps: Int!
+  performanceFeeBps: Int!
+  perfRateX: BigInt!
   immediateExitPenaltyBps: Int!
   forceExitPenaltyBps: Int!
+
+  # Effective limits from GlobalConfig
+  depositCap: BigInt!
+  remainingDepositCapacity: BigInt!
+  userDepositCap: BigInt!
+  minimumDeposit: BigInt!
+  epochDuration: BigInt!
 
   # Status flags
   status: VaultStatus!
@@ -121,6 +174,17 @@ type Vault @entity {
   isActive: Boolean!
   depositsEnabled: Boolean!
   withdrawalsEnabled: Boolean!
+
+  # SG-9 — pointer to the currently-open VaultPauseEvent per scope (null = not paused)
+  activeAllPause: String
+  activeDepositsPause: String
+  activeWithdrawalsPause: String
+  activeInstantWithdrawalsPause: String
+  activeQueuedRequestsPause: String
+  activeEpochCloseFundPause: String
+  activeFundedClaimsPause: String
+  activeForceExitPause: String
+  pauseEvents: [VaultPauseEvent!]! @derivedFrom(field: "vault")
 
   # Components (addresses)
   bufferManager: Bytes
@@ -138,6 +202,14 @@ type Vault @entity {
   totalDeposits: BigInt!
   totalWithdrawals: BigInt!
   totalUsers: Int!
+
+  # Economic-exit liability state. Withdrawal requests burn shares and fix
+  # assetsOwed at request; totalAssets() = max(0, grossAssets - totalOwed).
+  grossAssets: BigInt
+  totalOwed: BigInt
+  liabilityIndex: BigInt          # WAD; < 1e18 only while insolvent
+  isInsolvent: Boolean!
+  solvencyEvents: [VaultSolvencyEvent!]! @derivedFrom(field: "vault")
   transactionCount: Int!
 
   updatedAt: BigInt!
@@ -169,8 +241,9 @@ type VaultDayData @entity {
   sharePrice: BigInt!
 
   # USD values
-  tvlUsd: BigDecimal!
-  assetPriceUsd: BigDecimal!
+  tvlUsd: BigDecimal
+  assetPriceUsd: BigDecimal
+  priceStatus: PriceStatus!
 
   # Performance
   dailyReturn: BigDecimal!
@@ -178,16 +251,47 @@ type VaultDayData @entity {
 
   # Volume
   depositsAssets: BigInt!
-  depositsUsd: BigDecimal!
+  depositsUsd: BigDecimal
   withdrawalsAssets: BigInt!
-  withdrawalsUsd: BigDecimal!
+  withdrawalsUsd: BigDecimal
   netFlowAssets: BigInt!
-  netFlowUsd: BigDecimal!
+  netFlowUsd: BigDecimal
 
   # Counts
   depositCount: Int!
   withdrawCount: Int!
   uniqueUsers: Int!
+}
+
+# Vault hourly snapshot (SG-7). ID: {vaultId}-{hourId}   hourId = timestamp / 3600
+# Retention: keep ~90 days of hourly; daily is kept indefinitely (see docs/DEPLOYMENT.md).
+type VaultHourData @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  hourId: Int!
+  periodStartUnix: Int!
+
+  totalAssets: BigInt!
+  totalSupply: BigInt!
+  sharePrice: BigInt!
+  tvlUsd: BigDecimal
+  assetPriceUsd: BigDecimal
+  priceStatus: PriceStatus!
+
+  depositsAssets: BigInt!
+  depositsUsd: BigDecimal
+  withdrawalsAssets: BigInt!
+  withdrawalsUsd: BigDecimal
+  netFlowAssets: BigInt!
+  netFlowUsd: BigDecimal
+
+  depositCount: Int!
+  withdrawCount: Int!
+  uniqueUsers: Int!
+
+  hourlyReturn: BigDecimal!
 }
 
 # =============================================================================
@@ -204,29 +308,30 @@ type UserVaultPosition @entity {
   # Current holdings
   shares: BigInt!
   assets: BigInt!
-  assetsUsd: BigDecimal!
+  assetsUsd: BigDecimal
+  priceStatus: PriceStatus!
 
   # Cost basis tracking (FIFO)
   netDepositedAssets: BigInt!
-  netDepositedUsd: BigDecimal!
+  netDepositedUsd: BigDecimal
   costBasisFifoAssets: BigInt!
-  costBasisFifoUsd: BigDecimal!
+  costBasisFifoUsd: BigDecimal
 
   # P&L tracking
   realizedPnlAssets: BigInt!
-  realizedPnlUsd: BigDecimal!
+  realizedPnlUsd: BigDecimal
   unrealizedPnlAssets: BigInt!
-  unrealizedPnlUsd: BigDecimal!
+  unrealizedPnlUsd: BigDecimal
 
   # Earned (total gains)
   earnedAssets: BigInt!
-  earnedUsd: BigDecimal!
+  earnedUsd: BigDecimal
 
   # Cumulative stats
   totalDepositedAssets: BigInt!
-  totalDepositedUsd: BigDecimal!
+  totalDepositedUsd: BigDecimal
   totalWithdrawnAssets: BigInt!
-  totalWithdrawnUsd: BigDecimal!
+  totalWithdrawnUsd: BigDecimal
 
   # Timestamps
   createdAt: BigInt!
@@ -237,6 +342,10 @@ type UserVaultPosition @entity {
   # Transaction count
   depositCount: Int!
   withdrawCount: Int!
+
+  # SG-16 — FIFO lot bookkeeping (decoupled from depositCount)
+  lotCounter: Int!            # next free lot index; monotonic, never reused
+  firstActiveLotIndex: Int!   # compaction cursor — lots below this are fully consumed
 
   # FIFO lots for accurate cost basis
   lots: [PositionLot!]! @derivedFrom(field: "position")
@@ -256,9 +365,9 @@ type PositionLot @entity {
 
   sharesBought: BigInt!
   assetsCost: BigInt!
-  usdCost: BigDecimal!
+  usdCost: BigDecimal
   sharePriceAtBuy: BigInt!
-  assetPriceUsdAtBuy: BigDecimal!
+  assetPriceUsdAtBuy: BigDecimal
 
   # Current state
   sharesRemaining: BigInt!
@@ -280,9 +389,10 @@ type UserPositionDayData @entity {
   # Snapshot
   shares: BigInt!
   assets: BigInt!
-  assetsUsd: BigDecimal!
+  assetsUsd: BigDecimal
   sharePrice: BigInt!
-  assetPriceUsd: BigDecimal!
+  assetPriceUsd: BigDecimal
+  priceStatus: PriceStatus!
 
   # Cumulative at end of day
   totalDepositedAssets: BigInt!
@@ -311,7 +421,8 @@ type Transaction @entity {
   # Amounts
   shares: BigInt!
   assets: BigInt!
-  assetsUsd: BigDecimal!
+  assetsUsd: BigDecimal
+  priceStatus: PriceStatus!
 
   # For transfers
   from: Bytes
@@ -329,19 +440,27 @@ type Transaction @entity {
 
   # Price at tx time
   sharePrice: BigInt!
-  assetPriceUsd: BigDecimal!
+  assetPriceUsd: BigDecimal
 }
 
 # Pending claim request. ID: vaultId-claimId
 type ClaimRequest @entity {
   id: ID!
   vault: Vault!
+  epoch: WithdrawalEpoch
   user: Bytes!
   chainId: Int!
 
   claimId: BigInt!
+  epochId: BigInt
   shares: BigInt!
+  grossShares: BigInt!
+  netShares: BigInt!
+  feeShares: BigInt!
+  assets: BigInt!
   assetsEstimated: BigInt!
+  assetsOwed: BigInt              # fixed at request (economic exit)
+  recoveryLoss: BigInt            # assetsOwed - assetsReceived when the epoch recovered < 100%
 
   isImmediate: Boolean!
   status: String!
@@ -353,8 +472,131 @@ type ClaimRequest @entity {
   settleTxHash: Bytes
   assetsReceived: BigInt
 
+  # legacy: economic-exit core has no cancel
   cancelledAt: BigInt
   cancelTxHash: Bytes
+}
+
+# EpochedQueueModule settlement epoch. ID: {vaultId}-{epochId}
+enum WithdrawalEpochState {
+  OPEN
+  CLOSED
+  FUNDED
+}
+
+type WithdrawalEpoch @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+  epochId: BigInt!
+  state: WithdrawalEpochState!
+
+  openedAt: BigInt!
+  epochDuration: BigInt!
+  epochClosesAt: BigInt!
+  closedAt: BigInt
+  fundedAt: BigInt
+  ppsAtClose: BigInt              # legacy: epochs no longer price at close
+
+  totalGrossShares: BigInt!
+  totalNetShares: BigInt!
+  totalNetAssets: BigInt!         # nominal assets owed to the cohort (== totalAssetsOwed)
+  totalAssetsOwed: BigInt!
+  totalFeeShares: BigInt!
+  claimCount: BigInt!
+  cancelledClaimCount: BigInt!    # legacy: always 0 on the economic-exit core
+
+  # Set once when the epoch becomes FUNDED (EpochRecoveryCrystallized)
+  reservedAssets: BigInt
+  recoveryIndex: BigInt           # WAD; 1e18 = paid in full
+  recoveredAssets: BigInt
+  writeOffAssets: BigInt
+  lastNavInvalidReason: Int
+  claimedCount: BigInt!
+  claimedAssets: BigInt!
+
+  lastFundingNeeded: BigInt
+  lastHotBefore: BigInt
+  lastHotAfter: BigInt
+  lastFreeLiquidity: BigInt
+  lastShortfall: BigInt
+  updatedAt: BigInt!
+
+  claims: [ClaimRequest!]! @derivedFrom(field: "epoch")
+  events: [WithdrawalEpochEvent!]! @derivedFrom(field: "epoch")
+}
+
+enum WithdrawalEpochEventType {
+  OPENED
+  WITHDRAWAL_REQUESTED
+  WITHDRAWAL_CANCELLED  # legacy
+  CLOSED
+  FUND_ATTEMPT
+  FUND_SKIPPED
+  FUNDING_SHORTFALL
+  FUNDING_NAV_INVALID
+  RECOVERY_CRYSTALLIZED
+  FUNDED
+  ASSETS_CLAIMED
+}
+
+# Lossless EpochedQueueModule event history. ID: txHash-logIndex
+type WithdrawalEpochEvent @entity {
+  id: ID!
+  vault: Vault!
+  epoch: WithdrawalEpoch!
+  chainId: Int!
+  epochId: BigInt!
+  eventType: WithdrawalEpochEventType!
+
+  claimId: BigInt
+  user: Bytes
+  grossShares: BigInt
+  netShares: BigInt
+  feeShares: BigInt
+  sharesReturned: BigInt
+  ppsAtClose: BigInt
+  totalNetShares: BigInt
+  totalNetAssets: BigInt
+  totalFeeShares: BigInt
+  assets: BigInt
+  needed: BigInt
+  hotBefore: BigInt
+  hotAfter: BigInt
+  cursorBefore: BigInt
+  cursorAfter: BigInt
+  freeLiquidity: BigInt
+  shortfall: BigInt
+  assetsOwed: BigInt
+  totalAssetsOwed: BigInt
+  recoveryIndex: BigInt
+  unclaimed: BigInt
+  recovered: BigInt
+  writeOff: BigInt
+  navInvalidReason: Int
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+enum SolvencyEventType {
+  ENTERED
+  EXITED
+}
+
+# InsolvencyEntered / InsolvencyExited (gross < owed). ID: txHash-logIndex
+type VaultSolvencyEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+  type: SolvencyEventType!
+  grossAssets: BigInt!
+  totalOwed: BigInt!
+  liabilityIndex: BigInt          # ENTERED only
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
 }
 
 # Force withdraw event - guaranteed exit operation. ID: txHash-logIndex
@@ -368,6 +610,8 @@ type ForceWithdrawEvent @entity {
   receiver: Bytes!
   assets: BigInt!
   sharesSpent: BigInt!
+  targetAssets: BigInt            # forceWithdrawAll only (partial fill when assets < target)
+  isWithdrawAll: Boolean!
 
   timestamp: BigInt!
   blockNumber: BigInt!
@@ -411,6 +655,39 @@ type VaultStrategy @entity {
   updatedAt: BigInt!
 }
 
+# Per-strategy per-day allocation + harvest history (SG-8).
+# ID: {vaultId}-{strategyAddress}-{dayId}   dayId = timestamp / 86400
+type StrategyDayData @entity {
+  id: ID!
+  dayId: Int!
+  vault: Vault!
+  strategy: Bytes!
+  vaultStrategy: VaultStrategy
+  chainId: Int!
+  periodStartUnix: Int!
+
+  # Allocation snapshot (last value seen in the day)
+  totalAssets: BigInt!
+  totalAssetsUsd: BigDecimal
+  priceStatus: PriceStatus!
+  weightBps: Int!
+  allocationPct: BigDecimal!    # share of vault NAV, 0..100
+
+  # Harvest activity (summed over the day)
+  harvestCount: Int!
+  harvestPnl: BigInt!
+  harvestRealized: BigInt!
+  harvestFailures: Int!
+
+  # Routing flow (summed over the day)
+  routedIn: BigInt!
+  routedOut: BigInt!
+  idleCash: BigInt!             # cashAfter from the last routing event in the day
+
+  enabled: Boolean!
+  quarantined: Boolean!
+}
+
 # =============================================================================
 # PRICING ENTITIES
 # =============================================================================
@@ -423,15 +700,20 @@ type TokenPrice @entity {
   symbol: String!
   decimals: Int!
 
-  priceUsd: BigDecimal!
+  priceUsd: BigDecimal
   source: String!
   status: PriceStatus!
 
+  feed: ChainlinkFeed             # SG-4 — resolved feed (null when status = MISSING)
+  stalenessSeconds: BigInt        # SG-4 — age of the underlying feed answer
+
   updatedAt: BigInt!
   updatedAtBlock: BigInt!
+
+  dayData: [TokenPriceDayData!]! @derivedFrom(field: "tokenPrice")
 }
 
-# Chainlink oracle configuration. ID: tokenAddress-chainId
+# Chainlink oracle configuration / registry. ID: tokenAddress-chainId  (SG-4)
 type ChainlinkFeed @entity {
   id: ID!
   token: Bytes!
@@ -440,6 +722,24 @@ type ChainlinkFeed @entity {
   decimals: Int!
   description: String!
   isActive: Boolean!
+  updatedAt: BigInt!
+}
+
+# Historicised token price (SG-14). ID: {token}-{chainId}-{dayId}
+type TokenPriceDayData @entity {
+  id: ID!
+  dayId: Int!
+  token: Bytes!
+  chainId: Int!
+  tokenPrice: TokenPrice!
+
+  priceUsd: BigDecimal           # last valid price seen in the day
+  status: PriceStatus!
+  source: String!
+
+  samples: Int!
+  minPriceUsd: BigDecimal
+  maxPriceUsd: BigDecimal
 }
 
 # =============================================================================
@@ -454,9 +754,9 @@ type User @entity {
 
   # Aggregated stats
   totalPositions: Int!
-  totalAssetsUsd: BigDecimal!
-  totalEarnedUsd: BigDecimal!
-  totalRealizedPnlUsd: BigDecimal!
+  totalAssetsUsd: BigDecimal
+  totalEarnedUsd: BigDecimal
+  totalRealizedPnlUsd: BigDecimal
 
   firstSeenAt: BigInt!
   lastActiveAt: BigInt!
@@ -471,9 +771,45 @@ type UpkeepAction @entity {
   id: ID!
   chainId: Int!
   upkeep: Bytes!
-  op: Int!
+  op: Int!                    # raw on-chain enum value (kept for back-compat)
+  opType: UpkeepOpType!       # decoded (SG-3)
+  upkeepKind: UpkeepKind!     # which automation contract (SG-3)
   arg: BigInt!
   success: Boolean!
+
+  # Automation cost (SG-2) — populated from event.receipt (requires `receipt: true`)
+  gasUsed: BigInt
+  gasPrice: BigInt
+  txFeeWei: BigInt            # gasUsed * gasPrice, precomputed
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+enum ClaimSettlementEventType {
+  PERFORMED
+  CLAIM_FAILED
+  CLAIM_EXCLUDED
+  CURSOR_SET
+  BATCH_CONFIGURED
+}
+
+# ClaimSettlementUpkeep activity. ID: txHash-logIndex
+type ClaimSettlementUpkeepEvent @entity {
+  id: ID!
+  chainId: Int!
+  upkeep: Bytes!
+  type: ClaimSettlementEventType!
+  epochId: BigInt
+  claimId: BigInt
+  claimCount: BigInt
+  totalSettled: BigInt
+  success: Boolean
+  retryAt: BigInt
+  excluded: Boolean
+  maxClaimsPerUpkeep: BigInt
+  maxScanPerUpkeep: BigInt
   timestamp: BigInt!
   blockNumber: BigInt!
   txHash: Bytes!
@@ -849,10 +1185,46 @@ type WarmAdapterEvent @entity {
 
   type: WarmAdapterEventType!
   adapter: Bytes!
+  cap: BigInt
 
   timestamp: BigInt!
   blockNumber: BigInt!
   txHash: Bytes!
+}
+
+# Pause scope for VaultPauseEvent (SG-9)
+enum PauseScope {
+  ALL
+  DEPOSITS
+  WITHDRAWALS
+  INSTANT_WITHDRAWALS
+  QUEUED_REQUESTS
+  EPOCH_CLOSE_FUND
+  FUNDED_CLAIMS
+  FORCE_EXIT
+}
+
+# Vault pause history with duration (SG-9). ID: {vaultId}-{scope}-{pausedAtTxHash}
+type VaultPauseEvent @entity {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+  scope: PauseScope!
+
+  pausedAt: BigInt!
+  pausedAtBlock: BigInt!
+  pausedTxHash: Bytes!
+  pausedBy: Bytes                # tx sender
+
+  unpausedAt: BigInt            # null while still paused
+  unpausedAtBlock: BigInt
+  unpausedTxHash: Bytes
+  unpausedBy: Bytes
+
+  durationSeconds: BigInt        # set on unpause
+  active: Boolean!
+  guardianTriggered: Boolean!    # correlate with GuardianPauseActivated
+  anomalous: Boolean!            # unpause arrived with no open record
 }
 
 # Guardian pause event. ID: txHash-logIndex
@@ -892,6 +1264,38 @@ type OwnershipEvent @entity {
   previousOwner: Bytes!
   newOwner: Bytes!
   isPending: Boolean!  # true for initiated, false for completed
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Module authorization audit trail (Diamond-lite routing). ID: txHash-logIndex
+# Events.sol: ModuleAuthorized(address indexed module, bool authorized) — SG-10
+type ModuleAuthorizationEvent @entity(immutable: true) {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  module: Bytes!
+  authorized: Boolean!
+
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  txHash: Bytes!
+}
+
+# Inflation-attack hardening seed at vault deploy. ID: txHash-logIndex
+# Events.sol: DeadDepositSeeded(uint256 assets, uint256 shares, address indexed dead) — SG-11
+# Expected exactly once per vault; its absence is itself a finding.
+type DeadDepositEvent @entity(immutable: true) {
+  id: ID!
+  vault: Vault!
+  chainId: Int!
+
+  assets: BigInt!
+  shares: BigInt!
+  dead: Bytes!
 
   timestamp: BigInt!
   blockNumber: BigInt!
@@ -964,6 +1368,11 @@ type StrategyHarvestEvent @entity {
   realized: BigInt!
   success: Boolean!
   failureReason: Bytes  # if failed
+
+  # Automation cost (SG-2) — populated from event.receipt (requires `receipt: true`)
+  gasUsed: BigInt
+  gasPrice: BigInt
+  txFeeWei: BigInt   # gasUsed * gasPrice, precomputed
 
   timestamp: BigInt!
   blockNumber: BigInt!
@@ -1205,6 +1614,8 @@ enum OracleRegistryEventType {
   ASSET_CONFIG_SET    # AssetOracleConfigSet(asset, oracle, maxStaleness)
   VAULT_OVERRIDE_SET  # VaultOracleOverrideSet(vault, oracle, maxStaleness)
   DEFAULT_CONFIG_SET  # DefaultOracleConfigSet(oracle, maxStaleness)
+  OVERRIDE_SET        # VaultOverrideSet(vault, paramType) — effective config changed
+  OVERRIDE_CLEARED    # VaultOverrideCleared(vault, paramType) — SG-12
 }
 
 # Oracle registry configuration event. ID: txHash-logIndex
@@ -1214,9 +1625,10 @@ type OracleRegistryEvent @entity {
 
   type: OracleRegistryEventType!
   asset: Bytes           # for ASSET_CONFIG_SET
-  vault: Bytes           # for VAULT_OVERRIDE_SET
-  oracle: Bytes!
-  maxStaleness: BigInt!
+  vault: Bytes           # for VAULT_OVERRIDE_SET / OVERRIDE_SET / OVERRIDE_CLEARED
+  oracle: Bytes!         # zero address for non-oracle overrides
+  maxStaleness: BigInt!  # zero for non-oracle overrides
+  paramType: Int         # GlobalConfig.ParamType for generic set/cleared overrides
 
   timestamp: BigInt!
   blockNumber: BigInt!
@@ -1501,7 +1913,8 @@ type PeripheryUpkeepEvent @entity {
   id: ID!
   chainId: Int!
 
-  op: String!    # "SPLIT", "REDEEM", "FUND"
+  op: String!             # "SPLIT", "REDEEM", "FUND" (legacy free string)
+  opType: UpkeepOpType!   # decoded (SG-3)
 
   timestamp: BigInt!
   blockNumber: BigInt!
@@ -1756,6 +2169,27 @@ type StrategyHealthFlag @entity {
   lastDegradedObservedAtTimestamp: BigInt
   updatedAtBlock: BigInt!
   updatedAtTimestamp: BigInt!
+}
+
+# Daily adapter-health snapshot (SG-13). ID: "{vaultId}-{adapterAddress}-{dayId}"
+# Captures what the event stream can see; risk-score inputs are RPC-only and are
+# covered by the backend snapshot layer (P-1).
+type AdapterHealthSnapshot @entity {
+  id: ID!
+  dayId: Int!
+  vault: Vault!
+  adapter: Bytes!
+  chainId: Int!
+
+  enabled: Boolean!
+  quarantined: Boolean!
+  flagged: Boolean!
+  consecutiveFailures: Int!
+  failuresToday: Int!
+  lastHarvestAt: BigInt
+  apyBps: Int
+  incentiveApyBps: Int
+  totalAssets: BigInt
 }
 
 # Adapter binding within a strategy. ID: "{strategyAddress}-{adapterAddress}-{chainId}"

@@ -1,17 +1,18 @@
-# Multyr Vault Subgraph v3.1
+# Multyr Vault Subgraph
 
 Subgraph for indexing Multyr vaults across Arbitrum, Base, and Ethereum.
 
 **Studio**: https://thegraph.com/studio/subgraph/multyr-subgraph
 **Slug**: `multyr-subgraph`
-**Current deploy**: v3.1.0
+**Last documented Studio release**: v3.1.0 (the current worktree is not published)
 
 ## Features
 
 - **ERC-4626 tracking**: Deposits, Withdrawals, Transfers, ForceWithdraw
-- **APY**: canonical sharePrice (decimals-aware), 30-day lookback, 1d/7d/30d averages
+- **Epoched exits**: request, cancel, close, fund attempts/shortfalls, funding, and claims
+- **APY**: canonical sharePrice (decimals-aware), loss-inclusive gross and net 1d/7d/30d averages
 - **FIFO Cost Basis**: position lots, realized/unrealized P&L
-- **USD Pricing**: Chainlink with staleness tracking
+- **USD Pricing**: Chainlink feed registry, staleness tracking, and nullable missing-price semantics
 - **Ops Dashboard**: ProtocolDeployment, VaultDeployment, StrategyDeployment wiring
 - **Automation**: VaultUpkeep, StrategyUpkeep, FeeCollectorUpkeep events + bindings
 - **Vault Lifecycle**: VaultFactory v2 with deprecateVault, setVaultStatus, removeVault
@@ -49,21 +50,20 @@ Subgraph for indexing Multyr vaults across Arbitrum, Base, and Ethereum.
     └── bootstrap-manifest.json # Canonical values for ops console fallback
 ```
 
-## Production Addresses (Arbitrum)
+## Active Arbitrum Deployment (25 Sep 2026)
 
-| Datasource | Address | Status |
-|-----------|---------|--------|
-| VaultFactory v2 | `0x4201311F1333843fb92a30c687B9C3824E53CA1d` | Active |
-| VaultUpkeep | `0xe5c2ba17bf294b70c21498fcc74975c86d380c9d` | Active |
-| GlobalConfig | `0x4A6a4E1D3120Bd016C96cf035d3FAB99D4a0c6Ce` | Active |
-| StrategyUpkeep v4 | `0x9D2c6AF78F57fEAe4322e86E5952Da4e414ada82` | Active |
-| FeeCollectorUpkeep | `0x5D4e0b9AA48234bC2Cb10b0A2f97430A4a9a8EA8` | Active |
-| OpsCollector | `0x78Db3575A3477adfEd19F74142b7ed1a592f80D1` | Active |
-| FeeDistributor | `0x855018a8BCe730ed528b426E78e9A5b28fAb457E` | Active |
-| EpochPayout | `0x15F5619256db081c1694f6966e25d1B234D2D897` | Active |
-| ReferralBinding | `0x864281D1A7b0E7d0071ea6AEC43b0fE0D7106b1b` | Active |
-| PartnerRegistry | `0xe66f441835c9Fa8833E5Fd0a67eB42Ef0a83a9e7` | Active |
-| DepositRouter | `0x6f051953f2f9b1bb4fe1b6ad537877af01a2e369` | Active |
+| Component | Address | Start block / indexing |
+|-----------|---------|------------------------|
+| VaultFactory | `0xa762B044C216c699A0bB1d0B7eA169a1716EB62d` | `508771925` |
+| CoreVault | `0x70c8F05fC599e96D1BB9ce6e9dc3e1d72A9A3d01` | dynamic template from factory registration `508772034` |
+| GlobalConfig | `0x04BA2Be680710B3Fae236bbFe18A5890A3829f98` | `508771938` |
+| VaultUpkeep | `0x0196b1fd654fcC5A61fe6E9431b39Be88BB32FFE` | `508772145` |
+| ClaimSettlementUpkeep | `0xD8CE7eA661A7E818337ad87E7bb87b56871da14E` | `508775680` |
+| StrategyRouter | `0x9E3C383092bd98Ce6b821Db5dD51fC5A9ccb231E` | dynamic template from vault wiring |
+| USDC strategy | `0xCC4A4A4CbB5e041ffE6CAc44D6F7F84B6F6cAEf1` | dynamic template from router registration (pending allowlist) |
+| StrategyUpkeep | `0xA01Aa76C782569691Aaf6A0790124Bd3E5Ff3ee6` | `508775176` |
+
+This core uses the economic-exit withdrawal model: a withdrawal request burns the net shares and fixes `assetsOwed`, and the epoch is only a settlement bucket. The subgraph books the exit at request (or in the instant/force-exit tx), and a claim only pays it out. The rewards/referral periphery, incentives engine, and FeeCollectorUpkeep are not deployed in this phase and remain dormant in the Arbitrum manifest. The complete address and exact-block inventory is in `deployments/arbitrum/`.
 
 Base and Ethereum use placeholder addresses (not yet deployed).
 
@@ -112,7 +112,7 @@ npx graph deploy multyr-subgraph arbitrum/subgraph.yaml --studio --version-label
 
 ## Bootstrap Registry
 
-For vault v4 on Arbitrum, `queueModule` and `adminModule` are not recoverable from the subgraph (deploy-time event emitted before template creation). See [docs/bootstrap-registry.md](docs/bootstrap-registry.md) and [docs/bootstrap-manifest.json](docs/bootstrap-manifest.json).
+Older vault v4 deployments may need a bootstrap fallback when wiring events predate template creation. See [docs/bootstrap-registry.md](docs/bootstrap-registry.md) and [docs/bootstrap-manifest.json](docs/bootstrap-manifest.json). The active EOA test deployment registers the vault before wiring, so its wiring events are indexable normally.
 
 The ops console should:
 1. Read `VaultDeployment` from subgraph (primary source)

@@ -1,35 +1,59 @@
 import { BigInt, BigDecimal, Bytes, ethereum } from "@graphprotocol/graph-ts"
 import { UserVaultPosition, PositionLot } from "../../generated/schema"
 import { ZERO_BI, ZERO_BD, ONE_E18, safeDiv } from "./constants"
+import { addUsd } from "./nullableUsd"
 
 // =============================================================================
-// FIFO COST BASIS TRACKING
+// FIFO COST BASIS TRACKING  (SG-16 hardened)
 // =============================================================================
+// Changes vs the original:
+//  1. Lot index comes from a dedicated persistent `position.lotCounter`, never
+//     from `depositCount` (which drifts as soon as transfers create lots).
+//  2. Transfers preserve individual lots: the receiver gets one lot per consumed
+//     sender lot, carrying the original acquisition timestamp / price.
+//  3. `position.firstActiveLotIndex` is a compaction cursor so consume / cost-
+//     basis loops skip fully-consumed lots instead of scanning from 0.
 
-/**
- * Create a new position lot on deposit
- * Each deposit creates a new FIFO lot for accurate cost basis tracking
- */
+// ---------------------------------------------------------------------------
+
+/** Allocate the next lot index and advance the counter (caller saves position). */
+function nextLotIndex(position: UserVaultPosition): i32 {
+  let idx = position.lotCounter
+  position.lotCounter = position.lotCounter + 1
+  return idx
+}
+
+/** Advance firstActiveLotIndex past any leading fully-consumed lots. */
+function compact(position: UserVaultPosition): void {
+  let i = position.firstActiveLotIndex
+  while (i < position.lotCounter) {
+    let lot = PositionLot.load(position.id + "-" + i.toString())
+    if (lot == null) { i++; continue }
+    if (!lot.isFullyConsumed && lot.sharesRemaining.gt(ZERO_BI)) break
+    i++
+  }
+  position.firstActiveLotIndex = i
+}
+
+// ---------------------------------------------------------------------------
+
+/** Create a new position lot on deposit. */
 export function createPositionLot(
   position: UserVaultPosition,
   shares: BigInt,
   assets: BigInt,
-  assetsUsd: BigDecimal,
+  assetsUsd: BigDecimal | null,
   sharePrice: BigInt,
-  assetPriceUsd: BigDecimal,
+  assetPriceUsd: BigDecimal | null,
   txHash: Bytes,
   block: ethereum.Block
 ): PositionLot {
-  // Get next lot index
-  let lotIndex = getNextLotIndex(position)
-
-  let id = position.id + "-" + lotIndex.toString()
-  let lot = new PositionLot(id)
+  let lotIndex = nextLotIndex(position)
+  let lot = new PositionLot(position.id + "-" + lotIndex.toString())
 
   lot.position = position.id
   lot.lotIndex = lotIndex
 
-  // Original deposit info
   lot.timestamp = block.timestamp
   lot.blockNumber = block.number
   lot.txHash = txHash
@@ -40,33 +64,19 @@ export function createPositionLot(
   lot.sharePriceAtBuy = sharePrice
   lot.assetPriceUsdAtBuy = assetPriceUsd
 
-  // Current state - initially all shares remain
   lot.sharesRemaining = shares
   lot.isFullyConsumed = false
 
   lot.save()
-
   return lot
 }
 
-/**
- * Get next lot index for a position
- * Counts existing lots to determine next index
- */
-function getNextLotIndex(position: UserVaultPosition): i32 {
-  // Simple approach: increment depositCount as proxy for lot count
-  return position.depositCount
-}
-
-/**
- * Consume shares from lots using FIFO order
- * Returns realized P&L from consuming these shares
- */
+/** Consume shares from lots in FIFO order; returns realized P&L. */
 export function consumeSharesFIFO(
   position: UserVaultPosition,
   sharesToConsume: BigInt,
   currentAssetValue: BigInt,
-  currentAssetPriceUsd: BigDecimal
+  currentAssetPriceUsd: BigDecimal | null
 ): FIFOResult {
   let result = new FIFOResult()
   result.realizedPnlAssets = ZERO_BI
@@ -74,56 +84,45 @@ export function consumeSharesFIFO(
   result.costBasisConsumedAssets = ZERO_BI
   result.costBasisConsumedUsd = ZERO_BD
 
-  if (sharesToConsume.equals(ZERO_BI)) {
-    return result
-  }
+  if (sharesToConsume.equals(ZERO_BI)) return result
 
   let remainingShares = sharesToConsume
 
-  // Calculate value per share being withdrawn
-  let totalShares = position.shares.plus(sharesToConsume) // shares before withdrawal
-  let valuePerShare = ZERO_BI
-  if (totalShares.gt(ZERO_BI)) {
-    valuePerShare = currentAssetValue.times(ONE_E18).div(totalShares)
-  }
+  // Value per share being withdrawn: currentAssetValue is what the consumed
+  // shares exited for, not the value of the whole position.
+  let valuePerShare = currentAssetValue.times(ONE_E18).div(sharesToConsume)
 
-  // Iterate through lots in FIFO order (by lotIndex)
-  let lotIndex = 0
-  while (remainingShares.gt(ZERO_BI) && lotIndex < position.depositCount) {
-    let lotId = position.id + "-" + lotIndex.toString()
-    let lot = PositionLot.load(lotId)
+  let lotIndex = position.firstActiveLotIndex
+  while (remainingShares.gt(ZERO_BI) && lotIndex < position.lotCounter) {
+    let lot = PositionLot.load(position.id + "-" + lotIndex.toString())
 
     if (lot != null && !lot.isFullyConsumed && lot.sharesRemaining.gt(ZERO_BI)) {
-      // Calculate how many shares to take from this lot
       let sharesToTake = remainingShares.lt(lot.sharesRemaining)
         ? remainingShares
         : lot.sharesRemaining
 
-      // Calculate proportional cost basis
       let costBasisPortion = ZERO_BI
-      let costBasisUsdPortion = ZERO_BD
-
+      let costBasisUsdPortion: BigDecimal | null = ZERO_BD
+      let lotUsdCost = lot.usdCost
       if (lot.sharesBought.gt(ZERO_BI)) {
-        // Proportional cost = (shares taken / shares bought) * total cost
         costBasisPortion = lot.assetsCost.times(sharesToTake).div(lot.sharesBought)
-        costBasisUsdPortion = lot.usdCost.times(sharesToTake.toBigDecimal()).div(lot.sharesBought.toBigDecimal())
+        costBasisUsdPortion = lotUsdCost === null
+          ? null
+          : lotUsdCost.times(sharesToTake.toBigDecimal()).div(lot.sharesBought.toBigDecimal())
       }
 
-      // Calculate value of shares being sold
       let valueOfShares = sharesToTake.times(valuePerShare).div(ONE_E18)
-      let valueOfSharesUsd = valueOfShares.toBigDecimal().times(currentAssetPriceUsd)
+      let valueOfSharesUsd: BigDecimal | null = currentAssetPriceUsd === null
+        ? null
+        : valueOfShares.toBigDecimal().times(currentAssetPriceUsd)
 
-      // Realized P&L = value received - cost basis
-      let realizedPnl = valueOfShares.minus(costBasisPortion)
-      let realizedPnlUsd = valueOfSharesUsd.minus(costBasisUsdPortion)
-
-      // Accumulate
-      result.realizedPnlAssets = result.realizedPnlAssets.plus(realizedPnl)
-      result.realizedPnlUsd = result.realizedPnlUsd.plus(realizedPnlUsd)
+      result.realizedPnlAssets = result.realizedPnlAssets.plus(valueOfShares.minus(costBasisPortion))
+      result.realizedPnlUsd = valueOfSharesUsd === null || costBasisUsdPortion === null
+        ? null
+        : addUsd(result.realizedPnlUsd, valueOfSharesUsd.minus(costBasisUsdPortion))
       result.costBasisConsumedAssets = result.costBasisConsumedAssets.plus(costBasisPortion)
-      result.costBasisConsumedUsd = result.costBasisConsumedUsd.plus(costBasisUsdPortion)
+      result.costBasisConsumedUsd = addUsd(result.costBasisConsumedUsd, costBasisUsdPortion)
 
-      // Update lot
       lot.sharesRemaining = lot.sharesRemaining.minus(sharesToTake)
       lot.isFullyConsumed = lot.sharesRemaining.equals(ZERO_BI)
       lot.save()
@@ -134,54 +133,65 @@ export function consumeSharesFIFO(
     lotIndex++
   }
 
+  compact(position)
   return result
 }
 
 /**
- * Transfer lots proportionally when shares are transferred
- * Creates new lots for receiver, reduces sender lots
+ * Transfer lots FIFO — the receiver gets one lot per consumed sender lot so its
+ * true acquisition timeline (and therefore FIFO cost basis on a later withdraw)
+ * is preserved.
  */
 export function transferLotsFIFO(
   fromPosition: UserVaultPosition,
   toPosition: UserVaultPosition,
   sharesToTransfer: BigInt,
   sharePrice: BigInt,
-  assetPriceUsd: BigDecimal,
+  assetPriceUsd: BigDecimal | null,
   txHash: Bytes,
   block: ethereum.Block
 ): void {
-  if (sharesToTransfer.equals(ZERO_BI)) {
-    return
-  }
+  if (sharesToTransfer.equals(ZERO_BI)) return
 
   let remainingShares = sharesToTransfer
-  let totalCostTransferred = ZERO_BI
-  let totalUsdCostTransferred = ZERO_BD
+  let lotIndex = fromPosition.firstActiveLotIndex
 
-  // Consume from sender's lots FIFO
-  let lotIndex = 0
-  while (remainingShares.gt(ZERO_BI) && lotIndex < fromPosition.depositCount) {
-    let lotId = fromPosition.id + "-" + lotIndex.toString()
-    let lot = PositionLot.load(lotId)
+  while (remainingShares.gt(ZERO_BI) && lotIndex < fromPosition.lotCounter) {
+    let lot = PositionLot.load(fromPosition.id + "-" + lotIndex.toString())
 
     if (lot != null && !lot.isFullyConsumed && lot.sharesRemaining.gt(ZERO_BI)) {
       let sharesToTake = remainingShares.lt(lot.sharesRemaining)
         ? remainingShares
         : lot.sharesRemaining
 
-      // Calculate proportional cost to transfer
       let costPortion = ZERO_BI
-      let costUsdPortion = ZERO_BD
-
+      let costUsdPortion: BigDecimal | null = ZERO_BD
+      let lotUsdCost = lot.usdCost
       if (lot.sharesBought.gt(ZERO_BI)) {
         costPortion = lot.assetsCost.times(sharesToTake).div(lot.sharesBought)
-        costUsdPortion = lot.usdCost.times(sharesToTake.toBigDecimal()).div(lot.sharesBought.toBigDecimal())
+        costUsdPortion = lotUsdCost === null
+          ? null
+          : lotUsdCost.times(sharesToTake.toBigDecimal()).div(lot.sharesBought.toBigDecimal())
       }
 
-      totalCostTransferred = totalCostTransferred.plus(costPortion)
-      totalUsdCostTransferred = totalUsdCostTransferred.plus(costUsdPortion)
+      // Receiver lot mirrors the sender lot's original acquisition data
+      let newIdx = nextLotIndex(toPosition)
+      let newLot = new PositionLot(toPosition.id + "-" + newIdx.toString())
+      newLot.position = toPosition.id
+      newLot.lotIndex = newIdx
+      newLot.timestamp = lot.timestamp
+      newLot.blockNumber = lot.blockNumber
+      newLot.txHash = txHash
+      newLot.sharesBought = sharesToTake
+      newLot.assetsCost = costPortion
+      newLot.usdCost = costUsdPortion
+      newLot.sharePriceAtBuy = lot.sharePriceAtBuy
+      newLot.assetPriceUsdAtBuy = lot.assetPriceUsdAtBuy
+      newLot.sharesRemaining = sharesToTake
+      newLot.isFullyConsumed = false
+      newLot.save()
 
-      // Update sender's lot
+      // Reduce sender lot
       lot.sharesRemaining = lot.sharesRemaining.minus(sharesToTake)
       lot.isFullyConsumed = lot.sharesRemaining.equals(ZERO_BI)
       lot.save()
@@ -192,49 +202,25 @@ export function transferLotsFIFO(
     lotIndex++
   }
 
-  // Create a single new lot for receiver with the transferred cost basis
-  if (sharesToTransfer.gt(ZERO_BI)) {
-    let newLotIndex = toPosition.depositCount
-    let newLotId = toPosition.id + "-" + newLotIndex.toString()
-    let newLot = new PositionLot(newLotId)
-
-    newLot.position = toPosition.id
-    newLot.lotIndex = newLotIndex
-    newLot.timestamp = block.timestamp
-    newLot.blockNumber = block.number
-    newLot.txHash = txHash
-    newLot.sharesBought = sharesToTransfer
-    newLot.assetsCost = totalCostTransferred
-    newLot.usdCost = totalUsdCostTransferred
-    newLot.sharePriceAtBuy = sharePrice
-    newLot.assetPriceUsdAtBuy = assetPriceUsd
-    newLot.sharesRemaining = sharesToTransfer
-    newLot.isFullyConsumed = false
-    newLot.save()
-  }
+  compact(fromPosition)
 }
 
-/**
- * Calculate total remaining cost basis across all lots
- */
+/** Total remaining cost basis across active lots. */
 export function calculateTotalCostBasis(position: UserVaultPosition): CostBasisResult {
   let result = new CostBasisResult()
   result.totalCostAssets = ZERO_BI
   result.totalCostUsd = ZERO_BD
 
-  for (let i = 0; i < position.depositCount; i++) {
-    let lotId = position.id + "-" + i.toString()
-    let lot = PositionLot.load(lotId)
-
-    if (lot != null && lot.sharesRemaining.gt(ZERO_BI)) {
-      // Calculate remaining cost portion
-      if (lot.sharesBought.gt(ZERO_BI)) {
-        let costRemaining = lot.assetsCost.times(lot.sharesRemaining).div(lot.sharesBought)
-        let costUsdRemaining = lot.usdCost.times(lot.sharesRemaining.toBigDecimal()).div(lot.sharesBought.toBigDecimal())
-
-        result.totalCostAssets = result.totalCostAssets.plus(costRemaining)
-        result.totalCostUsd = result.totalCostUsd.plus(costUsdRemaining)
-      }
+  for (let i = position.firstActiveLotIndex; i < position.lotCounter; i++) {
+    let lot = PositionLot.load(position.id + "-" + i.toString())
+    if (lot != null && lot.sharesRemaining.gt(ZERO_BI) && lot.sharesBought.gt(ZERO_BI)) {
+      let costRemaining = lot.assetsCost.times(lot.sharesRemaining).div(lot.sharesBought)
+      let lotUsdCost = lot.usdCost
+      let costUsdRemaining: BigDecimal | null = lotUsdCost === null
+        ? null
+        : lotUsdCost.times(lot.sharesRemaining.toBigDecimal()).div(lot.sharesBought.toBigDecimal())
+      result.totalCostAssets = result.totalCostAssets.plus(costRemaining)
+      result.totalCostUsd = addUsd(result.totalCostUsd, costUsdRemaining)
     }
   }
 
@@ -247,12 +233,12 @@ export function calculateTotalCostBasis(position: UserVaultPosition): CostBasisR
 
 export class FIFOResult {
   realizedPnlAssets: BigInt = BigInt.zero()
-  realizedPnlUsd: BigDecimal = BigDecimal.zero()
+  realizedPnlUsd: BigDecimal | null = BigDecimal.zero()
   costBasisConsumedAssets: BigInt = BigInt.zero()
-  costBasisConsumedUsd: BigDecimal = BigDecimal.zero()
+  costBasisConsumedUsd: BigDecimal | null = BigDecimal.zero()
 }
 
 export class CostBasisResult {
   totalCostAssets: BigInt = BigInt.zero()
-  totalCostUsd: BigDecimal = BigDecimal.zero()
+  totalCostUsd: BigDecimal | null = BigDecimal.zero()
 }

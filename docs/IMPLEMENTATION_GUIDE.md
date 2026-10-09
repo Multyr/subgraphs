@@ -1,3 +1,20 @@
+> # ⚠️ DEPRECATED — DO NOT FOLLOW THIS DOCUMENT
+> ​
+> This guide describes the **legacy schema v1** (`UserPosition`, `depositedAssets`,
+> `withdrawnAssets`, `realizedProfit`, a 10-argument `VaultCreated`). None of those names
+> exist in the current subgraph. Writing handlers against this document will produce code
+> that does not compile.
+>
+> **The sole references are:**
+> - `schema.graphql` — the canonical entity/field definitions (schema v2.x).
+> - `docs/DASHBOARD-QUERIES.graphql` — the canonical query set the dashboard consumes.
+> - `arbitrum/src/mappings.ts` + `arbitrum/src/helpers/` — the canonical mapping code
+>   (`base/` and `ethereum/` are generated from it by `npm run sync`).
+>
+> Retained only for historical context. (SG-6)
+
+---
+
 # Subgraph Implementation Guide
 
 ## Quick Start

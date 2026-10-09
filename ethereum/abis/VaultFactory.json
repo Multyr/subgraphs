@@ -69,6 +69,19 @@
   },
   {
     "type": "function",
+    "name": "deprecateVault",
+    "inputs": [
+      {
+        "name": "vault",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "getDeployedVaults",
     "inputs": [],
     "outputs": [
@@ -129,6 +142,61 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "removeVault",
+    "inputs": [
+      {
+        "name": "vault",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setVaultStatus",
+    "inputs": [
+      {
+        "name": "vault",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "note",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "vaultIndexPlusOne",
+    "inputs": [
+      {
+        "name": "vault",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "indexPlusOne",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "event",
@@ -218,6 +286,19 @@
   },
   {
     "type": "event",
+    "name": "VaultDeprecated",
+    "inputs": [
+      {
+        "name": "vault",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "VaultProductionReady",
     "inputs": [
       {
@@ -231,7 +312,7 @@
   },
   {
     "type": "event",
-    "name": "VaultDeprecated",
+    "name": "VaultRemoved",
     "inputs": [
       {
         "name": "vault",
@@ -241,19 +322,6 @@
       }
     ],
     "anonymous": false
-  },
-  {
-    "type": "function",
-    "name": "deprecateVault",
-    "inputs": [
-      {
-        "name": "vault",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
   },
   {
     "type": "event",
@@ -281,29 +349,6 @@
     "anonymous": false
   },
   {
-    "type": "function",
-    "name": "setVaultStatus",
-    "inputs": [
-      {
-        "name": "vault",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "status",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "note",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
     "type": "error",
     "name": "AssetMismatch",
     "inputs": []
@@ -316,6 +361,16 @@
   {
     "type": "error",
     "name": "UseOffchainDeployer",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "VaultAlreadyRegistered",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "VaultNotFound",
     "inputs": []
   },
   {

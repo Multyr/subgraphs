@@ -1,0 +1,57 @@
+name: subgraph
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "schema.graphql"
+      - "*/src/**"
+      - "*/abis/**"
+      - "*/subgraph.yaml"
+      - "*/tests/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/subgraph.yml"
+
+jobs:
+  build-and-test:
+    # SG-1 — Matchstick has no Windows binary; it runs fine on Linux/macOS.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # base/ethereum must be byte-identical to arbitrum (src + abis + tests)
+      - name: Source parity check
+        run: npm run sync:check
+
+      - name: Codegen (all networks)
+        run: npm run codegen:all
+
+      - name: Build (all networks)
+        run: npm run build:all
+
+      - name: Validate dashboard query contract
+        run: npm run validate:queries
+
+      - name: Matchstick tests (all networks)
+        run: npm run test:all
+
+      - name: Matchstick coverage report (all networks)
+        run: npm run test:coverage:all | tee matchstick-coverage.txt
+
+      - name: Upload Matchstick coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matchstick-coverage
+          path: matchstick-coverage.txt
+          if-no-files-found: error

@@ -27,6 +27,7 @@ import {
   safeDiv
 } from "./constants"
 import { getTokenPriceUsd, convertToUsd, updateTokenPriceWithStatus } from "./pricing"
+import { addUsd, subtractUsd } from "./nullableUsd"
 
 // =============================================================================
 // PROTOCOL ENTITY
@@ -43,6 +44,7 @@ export function getOrCreateProtocol(factoryAddress: Address, block: ethereum.Blo
     protocol.factoryAddress = factoryAddress
     protocol.totalVaults = 0
     protocol.totalTvlUsd = ZERO_BD
+    protocol.priceStatus = "VALID"
     protocol.totalUsers = 0
     protocol.updatedAt = block.timestamp
   }
@@ -65,6 +67,7 @@ export function getOrCreateVaultFactory(address: Address, block: ethereum.Block)
     factory.chainId = chainId
     factory.vaultCount = 0
     factory.totalTvlUsd = ZERO_BD
+    factory.priceStatus = "VALID"
     factory.createdAt = block.timestamp
     factory.createdAtBlock = block.number
   }
@@ -131,20 +134,32 @@ export function getOrCreateVault(
     vault.totalAssets = ZERO_BI
     vault.totalSupply = ZERO_BI
     vault.sharePrice = ZERO_BI
-    vault.tvlUsd = ZERO_BD
-    vault.assetPriceUsd = ZERO_BD
+    vault.tvlUsd = null
+    vault.assetPriceUsd = null
     vault.priceStatus = "MISSING"
 
     // Performance
     vault.apy1d = ZERO_BD
     vault.apy7d = ZERO_BD
     vault.apy30d = ZERO_BD
+    vault.apy = ZERO_BD
+    vault.netApy1d = ZERO_BD
+    vault.netApy7d = ZERO_BD
+    vault.netApy30d = ZERO_BD
+    vault.netApy = ZERO_BD
 
     // Fees (will be updated by events)
     vault.depositFeeBps = 0
     vault.withdrawFeeBps = 0
+    vault.performanceFeeBps = 0
+    vault.perfRateX = ZERO_BI
     vault.immediateExitPenaltyBps = 0
     vault.forceExitPenaltyBps = 0
+    vault.depositCap = ZERO_BI
+    vault.remainingDepositCapacity = ZERO_BI
+    vault.userDepositCap = ZERO_BI
+    vault.minimumDeposit = ZERO_BI
+    vault.epochDuration = ZERO_BI
 
     // Status
     vault.status = "ACTIVE"
@@ -167,6 +182,9 @@ export function getOrCreateVault(
     vault.totalWithdrawals = ZERO_BI
     vault.totalUsers = 0
     vault.transactionCount = 0
+
+    // Economic-exit liability state
+    vault.isInsolvent = false
 
     vault.updatedAt = block.timestamp
   }
@@ -210,14 +228,39 @@ export function refreshVaultState(vault: Vault, block: ethereum.Block): void {
   // Update share price using canonical formula (decimals-aware)
   updateVaultSharePriceCanonical(vault, ta, ts)
 
+  if (vault.depositCap.gt(ZERO_BI) && vault.depositCap.gt(ta)) {
+    vault.remainingDepositCapacity = vault.depositCap.minus(ta)
+  } else {
+    vault.remainingDepositCapacity = ZERO_BI
+  }
+
   // Update USD values with status
   let priceResult = updateTokenPriceWithStatus(Address.fromBytes(vault.asset), chainId, block)
-  vault.assetPriceUsd = priceResult.price
-  vault.tvlUsd = convertToUsd(vault.totalAssets, vault.assetDecimals, priceResult.price)
+  let price = priceResult.price
+  vault.assetPriceUsd = price
+  vault.tvlUsd = convertToUsd(vault.totalAssets, vault.assetDecimals, price)
   vault.priceStatus = priceResult.status
 
   vault.updatedAt = block.timestamp
   vault.save()
+}
+
+/**
+ * Refresh the economic-exit liability state (grossAssets / totalOwed /
+ * liabilityIndex / isInsolvent). Called from the queue, claim and solvency
+ * handlers only; caller saves the vault.
+ */
+export function refreshLiabilityState(vault: Vault): void {
+  let contract = VaultContract.bind(Address.fromBytes(vault.address))
+
+  let gross = contract.try_grossAssets()
+  if (!gross.reverted) vault.grossAssets = gross.value
+  let owed = contract.try_totalOwed()
+  if (!owed.reverted) vault.totalOwed = owed.value
+  let index = contract.try_liabilityIndex()
+  if (!index.reverted) vault.liabilityIndex = index.value
+  let insolvent = contract.try_isInsolvent()
+  if (!insolvent.reverted) vault.isInsolvent = insolvent.value
 }
 
 // =============================================================================
@@ -242,6 +285,7 @@ export function getOrCreateVaultDayData(vault: Vault, timestamp: BigInt): VaultD
     dayData.sharePrice = vault.sharePrice
     dayData.tvlUsd = vault.tvlUsd
     dayData.assetPriceUsd = vault.assetPriceUsd
+    dayData.priceStatus = vault.priceStatus
 
     // Performance
     dayData.dailyReturn = ZERO_BD
@@ -267,6 +311,7 @@ export function getOrCreateVaultDayData(vault: Vault, timestamp: BigInt): VaultD
   dayData.sharePrice = vault.sharePrice
   dayData.tvlUsd = vault.tvlUsd
   dayData.assetPriceUsd = vault.assetPriceUsd
+  dayData.priceStatus = vault.priceStatus
 
   return dayData
 }
@@ -285,6 +330,7 @@ export function snapshotVaultDayData(vault: Vault, block: ethereum.Block): void 
   dayData.sharePrice = vault.sharePrice
   dayData.tvlUsd = vault.tvlUsd
   dayData.assetPriceUsd = vault.assetPriceUsd
+  dayData.priceStatus = vault.priceStatus
 
   updateVaultDayDataApy(dayData)
   dayData.save()
@@ -352,10 +398,10 @@ export function updateVaultApyMetrics(vault: Vault, currentDayId: i32): void {
     let dayId = vault.id + "-" + (currentDayId - i).toString()
     let dayData = VaultDayData.load(dayId)
     if (dayData !== null) {
-      if (dayData.apy.gt(ZERO_BD)) {
-        sum7d = sum7d.plus(dayData.apy)
-        count7d++
-      }
+      // Include negative, zero, and unusually high observations. Anomaly
+      // filtering belongs in monitoring/UI, never in the indexer.
+      sum7d = sum7d.plus(dayData.apy)
+      count7d++
     }
   }
   if (count7d > 0) {
@@ -371,10 +417,8 @@ export function updateVaultApyMetrics(vault: Vault, currentDayId: i32): void {
     let dayId = vault.id + "-" + (currentDayId - i).toString()
     let dayData = VaultDayData.load(dayId)
     if (dayData !== null) {
-      if (dayData.apy.gt(ZERO_BD)) {
-        sum30d = sum30d.plus(dayData.apy)
-        count30d++
-      }
+      sum30d = sum30d.plus(dayData.apy)
+      count30d++
     }
   }
   if (count30d > 0) {
@@ -382,6 +426,25 @@ export function updateVaultApyMetrics(vault: Vault, currentDayId: i32): void {
   } else {
     vault.apy30d = ZERO_BD
   }
+
+  vault.apy = vault.apy30d
+  updateVaultNetApyMetrics(vault)
+}
+
+/** Apply the on-chain WAD performance rate to positive gross yield only. */
+function netOfPerformanceFee(grossApy: BigDecimal, perfRateX: BigInt): BigDecimal {
+  if (grossApy.le(ZERO_BD) || perfRateX.le(ZERO_BI)) return grossApy
+  let rate = perfRateX.toBigDecimal().div(ONE_E18_BD)
+  let one = BigDecimal.fromString("1")
+  if (rate.gt(one)) rate = one
+  return grossApy.times(one.minus(rate))
+}
+
+export function updateVaultNetApyMetrics(vault: Vault): void {
+  vault.netApy1d = netOfPerformanceFee(vault.apy1d, vault.perfRateX)
+  vault.netApy7d = netOfPerformanceFee(vault.apy7d, vault.perfRateX)
+  vault.netApy30d = netOfPerformanceFee(vault.apy30d, vault.perfRateX)
+  vault.netApy = vault.netApy30d
 }
 
 // =============================================================================
@@ -406,6 +469,7 @@ export function getOrCreateUserPosition(
     position.shares = ZERO_BI
     position.assets = ZERO_BI
     position.assetsUsd = ZERO_BD
+    position.priceStatus = "MISSING"
 
     // Cost basis
     position.netDepositedAssets = ZERO_BI
@@ -438,6 +502,10 @@ export function getOrCreateUserPosition(
     // Counts
     position.depositCount = 0
     position.withdrawCount = 0
+
+    // SG-16 — FIFO lot bookkeeping
+    position.lotCounter = 0            // next free lot index (monotonic)
+    position.firstActiveLotIndex = 0   // compaction cursor
   }
 
   return position
@@ -459,15 +527,19 @@ export function updatePositionValues(
 
   // USD value
   position.assetsUsd = convertToUsd(position.assets, vault.assetDecimals, vault.assetPriceUsd)
+  position.priceStatus = vault.priceStatus
 
   // Unrealized P&L = current value - cost basis
   position.unrealizedPnlAssets = position.assets.minus(position.costBasisFifoAssets)
-  position.unrealizedPnlUsd = position.assetsUsd.minus(position.costBasisFifoUsd)
+  position.unrealizedPnlUsd = subtractUsd(position.assetsUsd, position.costBasisFifoUsd)
 
   // Earned = current value - net deposited (deposits - withdrawals at current prices)
   // This represents total value gained including realized + unrealized
   position.earnedAssets = position.assets.plus(position.totalWithdrawnAssets).minus(position.totalDepositedAssets)
-  position.earnedUsd = position.assetsUsd.plus(position.totalWithdrawnUsd).minus(position.totalDepositedUsd)
+  position.earnedUsd = subtractUsd(
+    addUsd(position.assetsUsd, position.totalWithdrawnUsd),
+    position.totalDepositedUsd
+  )
 }
 
 // =============================================================================
@@ -499,6 +571,7 @@ export function getOrCreateUserPositionDayData(
   dayData.assetsUsd = position.assetsUsd
   dayData.sharePrice = vault.sharePrice
   dayData.assetPriceUsd = vault.assetPriceUsd
+  dayData.priceStatus = vault.priceStatus
   dayData.totalDepositedAssets = position.totalDepositedAssets
   dayData.totalWithdrawnAssets = position.totalWithdrawnAssets
   dayData.realizedPnlAssets = position.realizedPnlAssets
@@ -534,6 +607,7 @@ export function createTransaction(
   tx.shares = shares
   tx.assets = assets
   tx.assetsUsd = convertToUsd(assets, vault.assetDecimals, vault.assetPriceUsd)
+  tx.priceStatus = vault.priceStatus
 
   tx.timestamp = block.timestamp
   tx.blockNumber = block.number
@@ -581,7 +655,13 @@ export function getOrCreateClaimRequest(
     claim.user = user
     claim.chainId = vault.chainId
     claim.claimId = claimId
+    claim.epoch = null
+    claim.epochId = null
     claim.shares = ZERO_BI
+    claim.grossShares = ZERO_BI
+    claim.netShares = ZERO_BI
+    claim.feeShares = ZERO_BI
+    claim.assets = ZERO_BI
     claim.assetsEstimated = ZERO_BI
     claim.isImmediate = false
     claim.status = "PENDING"

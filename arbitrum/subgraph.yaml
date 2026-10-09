@@ -9,9 +9,10 @@ dataSources:
     name: VaultFactory
     network: arbitrum-one
     source:
-      address: "0x046aCF27Fa5A3Df049D4E3868af68D1D0CFAa733"
+      # 25 Sep 2026 deployment (multyr-core/broadcast/core-deployer-20260925.json)
+      address: "0xa762B044C216c699A0bB1d0B7eA169a1716EB62d"
       abi: VaultFactory
-      startBlock: 446479922
+      startBlock: 508771925
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -21,6 +22,8 @@ dataSources:
         - VaultFactory
         - Vault
         - TokenPrice
+        - TokenPriceDayData
+        - ChainlinkFeed
       abis:
         - name: VaultFactory
           file: ./abis/VaultFactory.json
@@ -48,9 +51,10 @@ dataSources:
     name: VaultUpkeep
     network: arbitrum-one
     source:
-      address: "0x35c4F18511200186e2827dCca50FbF62Ded446fB"
+      # 25 Sep 2026 deployment (multyr-core/broadcast/core-deployer-20260925.json)
+      address: "0x0196b1fd654fcC5A61fe6E9431b39Be88BB32FFE"
       abi: VaultUpkeep
-      startBlock: 446479922
+      startBlock: 508772145
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -63,8 +67,7 @@ dataSources:
       eventHandlers:
         - event: UpkeepPerformed(uint8,uint256,bool)
           handler: handleUpkeepPerformed
-        - event: RealizeForQueueFailed(uint256,bytes)
-          handler: handleRealizeForQueueFailed
+          receipt: true
         - event: DeployRealizeCooldownSet(uint64)
           handler: handleDeployRealizeCooldownSet
         - event: ReconcileHighThresholdSet(uint256)
@@ -77,9 +80,10 @@ dataSources:
     name: GlobalConfig
     network: arbitrum-one
     source:
-      address: "0xD5a607d6c043f2e901268bB868266A5dDbA01Dd9"
+      # 25 Sep 2026 deployment (multyr-core/broadcast/core-deployer-20260925.json)
+      address: "0x04BA2Be680710B3Fae236bbFe18A5890A3829f98"
       abi: GlobalConfig
-      startBlock: 446479922
+      startBlock: 508771938
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -89,6 +93,10 @@ dataSources:
       abis:
         - name: GlobalConfig
           file: ./abis/GlobalConfig.json
+        - name: PriceOracleMiddleware
+          file: ./abis/PriceOracleMiddleware.json
+        - name: ChainlinkAggregator
+          file: ./abis/ChainlinkAggregator.json
       eventHandlers:
         - event: DefaultOracleConfigSet(indexed address,uint256)
           handler: handleDefaultOracleConfigSet
@@ -96,6 +104,10 @@ dataSources:
           handler: handleAssetOracleConfigSet
         - event: VaultOracleOverrideSet(indexed address,indexed address,uint256)
           handler: handleVaultOracleOverrideSet
+        - event: VaultOverrideSet(indexed address,uint8)
+          handler: handleVaultOverrideSet
+        - event: VaultOverrideCleared(indexed address,uint8)
+          handler: handleVaultOverrideCleared
       file: ./src/mappings.ts
 
   # =========================================================================
@@ -111,9 +123,10 @@ dataSources:
     name: OpsCollector
     network: arbitrum-one
     source:
-      address: "0x78Db3575A3477adfEd19F74142b7ed1a592f80D1"
+      # Periphery rewards pipeline NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: OpsCollector
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -140,9 +153,10 @@ dataSources:
     name: FeeDistributor
     network: arbitrum-one
     source:
-      address: "0x855018a8BCe730ed528b426E78e9A5b28fAb457E"
+      # Periphery rewards pipeline NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: FeeDistributor
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -177,9 +191,10 @@ dataSources:
     name: EpochPayout
     network: arbitrum-one
     source:
-      address: "0x15F5619256db081c1694f6966e25d1B234D2D897"
+      # Periphery rewards pipeline NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: EpochPayout
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -201,9 +216,10 @@ dataSources:
     name: ReferralBinding
     network: arbitrum-one
     source:
-      address: "0xBCD9CD0E11fe5B6740403C7ce37Af22FB9E77A6E"
+      # Periphery rewards pipeline NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: ReferralBinding
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -225,9 +241,10 @@ dataSources:
     name: PartnerRegistry
     network: arbitrum-one
     source:
-      address: "0x3112a409159E4a72adFC7197daB24B38c0Cac2ac"
+      # Periphery rewards pipeline NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: PartnerRegistry
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -250,9 +267,10 @@ dataSources:
     name: DepositRouter
     network: arbitrum-one
     source:
-      address: "0x592C234d516463215e8Cf01C16162aaa8496b941"
+      # Periphery rewards pipeline NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: DepositRouter
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -292,13 +310,47 @@ dataSources:
           handler: handlePeripheryUpkeepPerformed
       file: ./src/mappings.ts
 
+  # ClaimSettlementUpkeep — pays FUNDED epoch claims to their owners
+  - kind: ethereum/contract
+    name: ClaimSettlementUpkeep
+    network: arbitrum-one
+    source:
+      # 25 Sep 2026 deployment (multyr-core/broadcast/claim-deployer-20260925.json)
+      address: "0xD8CE7eA661A7E818337ad87E7bb87b56871da14E"
+      abi: ClaimSettlementUpkeep
+      startBlock: 508775680
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - ClaimSettlementUpkeepEvent
+        - UpkeepAction
+      abis:
+        - name: ClaimSettlementUpkeep
+          file: ./abis/ClaimSettlementUpkeep.json
+      eventHandlers:
+        - event: UpkeepPerformed(indexed uint256,uint256,uint256,bool)
+          handler: handleClaimUpkeepPerformed
+          receipt: true
+        - event: ClaimSettlementFailed(indexed uint256,indexed uint256,uint256)
+          handler: handleClaimSettlementFailed
+        - event: ClaimExcluded(indexed uint256,indexed uint256,bool)
+          handler: handleClaimExcluded
+        - event: CursorSet(uint256,uint256)
+          handler: handleClaimCursorSet
+        - event: BatchSizeConfigured(uint256,uint256)
+          handler: handleClaimBatchSizeConfigured
+      file: ./src/mappings.ts
+
   - kind: ethereum/contract
     name: StrategyUpkeep
     network: arbitrum-one
     source:
-      address: "0xD2984A45CD7d2126897c86F3c2E68306168E3c68"
+      # 25 Sep 2026 deployment (USDC lending strategy; creation block from Blockscout)
+      address: "0xA01Aa76C782569691Aaf6A0790124Bd3E5Ff3ee6"
       abi: StrategyUpkeep
-      startBlock: 446479922
+      startBlock: 508775176
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -313,8 +365,10 @@ dataSources:
       eventHandlers:
         - event: UpkeepPerformed(indexed uint8,indexed address,uint256)
           handler: handleStrategyUpkeepPerformed
+          receipt: true
         - event: UpkeepErrored(indexed uint8,indexed address,bytes)
           handler: handleStrategyUpkeepErrored
+          receipt: true
         - event: StrategyAdded(indexed address)
           handler: handleUpkeepStrategyAdded
         - event: StrategyRemoved(indexed address)
@@ -327,9 +381,10 @@ dataSources:
     name: FeeCollectorUpkeep
     network: arbitrum-one
     source:
-      address: "0x924C814a5Befc4B0171365877d5c0a1faAa8409b"
+      # NOT deployed in this shadow release — dormant
+      address: "0x0000000000000000000000000000000000000001"
       abi: FeeCollectorUpkeep
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -343,8 +398,10 @@ dataSources:
       eventHandlers:
         - event: DistributionTriggered(indexed address,uint256)
           handler: handleFeeDistributionTriggered
+          receipt: true
         - event: DistributionFailed(indexed address,bytes)
           handler: handleFeeDistributionFailed
+          receipt: true
       file: ./src/mappings.ts
 
   # IncentivesEngine — Reconcile lifecycle (address updated post-deploy)
@@ -354,7 +411,7 @@ dataSources:
     source:
       address: "0x0000000000000000000000000000000000000001"
       abi: IncentivesEngine
-      startBlock: 446479922
+      startBlock: 999999999
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -394,17 +451,24 @@ templates:
       entities:
         - Vault
         - VaultDayData
+        - VaultHourData
         - UserVaultPosition
         - UserPositionDayData
         - PositionLot
         - Transaction
         - ClaimRequest
+        - WithdrawalEpoch
+        - WithdrawalEpochEvent
+        - VaultSolvencyEvent
         - User
         - TokenPrice
+        - TokenPriceDayData
+        - ChainlinkFeed
         - FeeEvent
         - Crystallization
         - PerfFeeMint
         - StrategyRoute
+        - StrategyDayData
         - VaultRealization
         - ReserveRestore
         - EpochEvent
@@ -416,6 +480,9 @@ templates:
         - ComponentTimelockEvent
         - VaultStrategy
         - ForceWithdrawEvent
+        - ModuleAuthorizationEvent
+        - DeadDepositEvent
+        - VaultPauseEvent
       abis:
         - name: Vault
           file: ./abis/Vault.json
@@ -525,22 +592,44 @@ templates:
           handler: handleTVLSnapshotUpdated
 
         # =========================================================================
-        # Claim Queue Events
+        # Epoched withdrawal queue events (EpochedQueueModule)
         # =========================================================================
-        - event: ClaimRequested(indexed uint256,indexed address,uint256,bool)
-          handler: handleClaimRequested
-        - event: ClaimCancelled(indexed uint256,indexed address)
-          handler: handleClaimCancelled
-        - event: ClaimSettled(indexed uint256,indexed address,uint256)
-          handler: handleClaimSettled
-        - event: ClaimQueued(indexed uint256)
-          handler: handleClaimQueued
-        - event: ClaimDequeued(indexed uint256)
-          handler: handleClaimDequeued
-        - event: SharesFrozen(indexed address,uint256,uint256)
-          handler: handleSharesFrozen
-        - event: SharesUnfrozen(indexed address,uint256,uint256)
-          handler: handleSharesUnfrozen
+        - event: EpochOpened(indexed uint256,uint64)
+          handler: handleEpochOpened
+        - event: EpochWithdrawalRequested(indexed uint256,indexed uint256,indexed address,uint256,uint256,uint256,uint256)
+          handler: handleEpochWithdrawalRequested
+        - event: EpochClosed(indexed uint256,uint256,uint256,uint256)
+          handler: handleEpochClosed
+        - event: EpochFundAttempt(indexed uint256,uint256,uint256,uint256)
+          handler: handleEpochFundAttempt
+        - event: EpochFundSkipped(indexed uint256,uint256,uint256)
+          handler: handleEpochFundSkipped
+        - event: EpochFundingShortfall(indexed uint256,uint256,uint256,uint256)
+          handler: handleEpochFundingShortfall
+        - event: EpochFunded(indexed uint256,uint256)
+          handler: handleQueueEpochFunded
+        - event: EpochAssetsClaimed(indexed uint256,indexed uint256,indexed address,uint256,uint256)
+          handler: handleEpochAssetsClaimed
+        - event: EpochRecoveryCrystallized(indexed uint256,uint256,uint256,uint256,uint256)
+          handler: handleEpochRecoveryCrystallized
+        - event: EpochFundingNavInvalid(indexed uint256,uint8)
+          handler: handleEpochFundingNavInvalid
+
+        # =========================================================================
+        # Economic exit: instant / force exits and solvency
+        # =========================================================================
+        - event: InstantExit(indexed address,uint256,uint256,uint256)
+          handler: handleInstantExit
+        - event: ForceExit(indexed address,uint256,uint256,uint256)
+          handler: handleForceExit
+        - event: ForceWithdrawAllExecuted(indexed address,indexed address,uint256,uint256,uint256)
+          handler: handleForceWithdrawAllExecuted
+        - event: ForceExitPenaltyTaken(indexed address,uint256,uint256)
+          handler: handleForceExitPenaltyTaken
+        - event: InsolvencyEntered(uint256,uint256,uint256)
+          handler: handleInsolvencyEntered
+        - event: InsolvencyExited(uint256,uint256)
+          handler: handleInsolvencyExited
 
         # =========================================================================
         # Routing / Ops Events
@@ -553,7 +642,7 @@ templates:
           handler: handleRealizedForQueue
         - event: StrategiesRebalanced(uint256,uint256)
           handler: handleStrategiesRebalanced
-        - event: QueuePrescanBoundHit(uint256,uint256)
+        - event: QueuePrescanBoundHit(uint256,uint256,uint256,uint256,bool)
           handler: handleQueuePrescanBoundHit
         - event: MinDelaySubmitted(uint64,uint64)
           handler: handleMinDelaySubmitted
@@ -563,8 +652,8 @@ templates:
           handler: handleMinDelayRevoked
         - event: ReserveTargetRestored(uint256)
           handler: handleReserveTargetRestored
-        - event: EpochRolled(uint256)
-          handler: handleEpochRolled
+        - event: WithdrawalCapEpochRolled(uint256)
+          handler: handleWithdrawalCapEpochRolled
         - event: VaultPpsSnapshot(uint64,uint256,uint256,uint256)
           handler: handleVaultPpsSnapshot
 
@@ -621,6 +710,10 @@ templates:
           handler: handleSelectorRegistrySet
         - event: ModuleSet(indexed bytes4,indexed address,uint8)
           handler: handleModuleSet
+        - event: ModuleAuthorized(indexed address,bool)
+          handler: handleModuleAuthorized
+        - event: DeadDepositSeeded(uint256,uint256,indexed address)
+          handler: handleDeadDepositSeeded
         - event: ModulesBatchSet(uint256)
           handler: handleModulesBatchSet
         - event: RoleSet(indexed bytes4,uint8)
@@ -635,8 +728,6 @@ templates:
           handler: handleOwnershipTransferred
         - event: AuthorizedSealerSet(indexed address)
           handler: handleAuthorizedSealerSet
-        - event: SealPrepared(indexed address,bytes32)
-          handler: handleSealPrepared
         - event: SystemSealed(indexed address,bytes32,uint256)
           handler: handleSystemSealed
 
@@ -671,8 +762,8 @@ templates:
           handler: handleIncentivesEngineUpdated
         - event: RewardsPayoutManagerUpdated(indexed address)
           handler: handleRewardsPayoutManagerUpdated
-        - event: RewardSharesMinted(indexed address,uint256,uint256)
-          handler: handleRewardSharesMinted
+        - event: RewardSharesPaid(indexed address,indexed address,uint256,uint256)
+          handler: handleRewardSharesPaid
         - event: FeeCollectorUpdated(indexed address)
           handler: handleFeeCollectorUpdated
         - event: VetoerUpdated(indexed address)
@@ -693,6 +784,26 @@ templates:
           handler: handleWithdrawalsPaused
         - event: WithdrawalsUnpaused()
           handler: handleWithdrawalsUnpaused
+        - event: InstantWithdrawalPaused()
+          handler: handleInstantWithdrawalPaused
+        - event: InstantWithdrawalUnpaused()
+          handler: handleInstantWithdrawalUnpaused
+        - event: QueuedRequestPaused()
+          handler: handleQueuedRequestPaused
+        - event: QueuedRequestUnpaused()
+          handler: handleQueuedRequestUnpaused
+        - event: EpochCloseFundPaused()
+          handler: handleEpochCloseFundPaused
+        - event: EpochCloseFundUnpaused()
+          handler: handleEpochCloseFundUnpaused
+        - event: FundedClaimPaused()
+          handler: handleFundedClaimPaused
+        - event: FundedClaimUnpaused()
+          handler: handleFundedClaimUnpaused
+        - event: ForceExitPaused()
+          handler: handleForceExitPaused
+        - event: ForceExitUnpaused()
+          handler: handleForceExitUnpaused
         - event: GuardianPauseActivated(indexed address,uint256)
           handler: handleGuardianPauseActivated
         - event: GuardianUpdated(indexed address)
@@ -701,7 +812,7 @@ templates:
         # =========================================================================
         # Warm Adapter Events
         # =========================================================================
-        - event: WarmAdapterApproved(indexed address)
+        - event: WarmAdapterApproved(indexed address,uint256)
           handler: handleWarmAdapterApproved
         - event: WarmAdapterRevoked(indexed address)
           handler: handleWarmAdapterRevoked
@@ -750,6 +861,7 @@ templates:
       language: wasm/assemblyscript
       entities:
         - AdapterBinding
+        - AdapterHealthSnapshot
       abis:
         - name: Strategy
           file: ./abis/Strategy.json
@@ -816,6 +928,7 @@ templates:
       entities:
         - VaultStrategy
         - StrategyRoute
+        - StrategyDayData
       abis:
         - name: StrategyRouter
           file: ./abis/StrategyRouter.json
@@ -853,8 +966,10 @@ templates:
         # Harvest telemetry events (Pendle-style)
         - event: StrategyHarvested(indexed address,int256,uint256)
           handler: handleStrategyHarvested
+          receipt: true
         - event: StrategyHarvestFailed(indexed address,bytes)
           handler: handleStrategyHarvestFailed
+          receipt: true
         - event: HarvestBatchSummary(uint256,int256,uint256)
           handler: handleHarvestBatchSummary
       file: ./src/mappings.ts

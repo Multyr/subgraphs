@@ -19,29 +19,53 @@ const __dirname = dirname(__filename);
 
 // Configuration
 const ROOT_SUBGRAPHS = resolve(__dirname, '..');
-const OUT_DIR = resolve(ROOT_SUBGRAPHS, '..', 'out');
+const REPOSITORIES_ROOT = resolve(ROOT_SUBGRAPHS, '..');
+const CORE_OUT_DIR = process.env.MULTYR_CORE_OUT || resolve(REPOSITORIES_ROOT, 'multyr-core', 'out');
+const STRATEGIES_OUT_DIR = process.env.MULTYR_STRATEGIES_OUT || resolve(REPOSITORIES_ROOT, 'multyr-strategies', 'out');
 const CHAINS = ['ethereum', 'arbitrum', 'base'];
 
 /**
  * Contract mapping configuration
  *
- * Simple contracts: outputFileName -> single artifact path
- * Combined contracts: outputFileName -> array of artifact paths (ABIs will be merged)
+ * Every output maps to one or more absolute Foundry artifact paths. Multiple
+ * artifacts are merged because module events are emitted from the delegating
+ * CoreVault/strategy address.
  *
- * For Vault.json we merge CoreVault + QueueModule + AdminModule because:
- * - QueueModule and AdminModule are called via delegatecall
+ * For Vault.json we merge CoreVault + its delegatecall modules (EpochedQueueModule,
+ * AdminModule, ERC4626Module, LiquidityOpsModule) because:
+ * - The modules are called via delegatecall
  * - Their events are emitted from CoreVault's address
  * - The subgraph needs all events in one ABI
  */
 const CONTRACTS = {
-  'VaultFactory.json': 'VaultFactory.sol/VaultFactory.json',
+  'VaultFactory.json': [resolve(CORE_OUT_DIR, 'VaultFactory.sol/VaultFactory.json')],
   'Vault.json': [
-    'CoreVault.sol/CoreVault.json',
-    'QueueModule.sol/QueueModule.json',
-    'AdminModule.sol/AdminModule.json',
-    'Events.sol/Events.json',
+    resolve(CORE_OUT_DIR, 'CoreVault.sol/CoreVault.json'),
+    resolve(CORE_OUT_DIR, 'EpochedQueueModule.sol/EpochedQueueModule.json'),
+    resolve(CORE_OUT_DIR, 'AdminModule.sol/AdminModule.json'),
+    resolve(CORE_OUT_DIR, 'ERC4626Module.sol/ERC4626Module.json'),
+    resolve(CORE_OUT_DIR, 'LiquidityOpsModule.sol/LiquidityOpsModule.json'),
+    resolve(CORE_OUT_DIR, 'Events.sol/Events.json'),
   ],
-  'ERC20.json': 'IERC20Metadata.sol/IERC20Metadata.json',
+  'GlobalConfig.json': [resolve(CORE_OUT_DIR, 'GlobalConfig.sol/GlobalConfig.json')],
+  'PriceOracleMiddleware.json': [resolve(CORE_OUT_DIR, 'PriceOracleMiddleware.sol/PriceOracleMiddleware.json')],
+  'VaultUpkeep.json': [resolve(CORE_OUT_DIR, 'VaultUpkeep.sol/VaultUpkeep.json')],
+  'ClaimSettlementUpkeep.json': [resolve(CORE_OUT_DIR, 'ClaimSettlementUpkeep.sol/ClaimSettlementUpkeep.json')],
+  'StrategyRouter.json': [resolve(CORE_OUT_DIR, 'StrategyRouter.sol/StrategyRouter.json')],
+  'Strategy.json': [
+    resolve(STRATEGIES_OUT_DIR, 'UsdcLendingStrategy.sol/UsdcMultiLendingVault.json'),
+    resolve(STRATEGIES_OUT_DIR, 'StrategyStorageLayout.sol/StrategyStorageLayout.json'),
+    resolve(STRATEGIES_OUT_DIR, 'StrategyParamsModule.sol/StrategyParamsModule.json'),
+    resolve(STRATEGIES_OUT_DIR, 'StrategyScoringModule.sol/StrategyScoringModule.json'),
+    resolve(STRATEGIES_OUT_DIR, 'StrategyAdapterOpsModule.sol/StrategyAdapterOpsModule.json'),
+    resolve(STRATEGIES_OUT_DIR, 'StrategyRebalanceGateModule.sol/StrategyRebalanceGateModule.json'),
+    resolve(STRATEGIES_OUT_DIR, 'StrategySettingsModule.sol/StrategySettingsModule.json'),
+    resolve(STRATEGIES_OUT_DIR, 'StrategyAllocCalcModule.sol/StrategyAllocCalcModule.json'),
+    resolve(STRATEGIES_OUT_DIR, 'StrategyRebalancePlanModule.sol/StrategyRebalancePlanModule.json'),
+    resolve(STRATEGIES_OUT_DIR, 'StrategySafetyOverflowModule.sol/StrategySafetyOverflowModule.json'),
+  ],
+  'StrategyUpkeep.json': [resolve(STRATEGIES_OUT_DIR, 'LendingStrategyUpkeep.sol/StrategyUpkeep.json')],
+  'ERC20.json': [resolve(CORE_OUT_DIR, 'IERC20Metadata.sol/IERC20Metadata.json')],
 };
 
 // Static ABIs that don't come from Foundry artifacts
@@ -186,12 +210,13 @@ function writeAbi(filePath, abi) {
  */
 function main() {
   console.log('=== ABI Extraction (cross-platform, no jq) ===\n');
-  console.log(`Foundry out dir: ${OUT_DIR}`);
+  console.log(`Core Foundry out dir: ${CORE_OUT_DIR}`);
+  console.log(`Strategies Foundry out dir: ${STRATEGIES_OUT_DIR}`);
   console.log(`Target chains: ${CHAINS.join(', ')}\n`);
 
   // Verify out directory exists
-  if (!existsSync(OUT_DIR)) {
-    console.error(`\n❌ ERROR: Foundry out directory not found at ${OUT_DIR}`);
+  if (!existsSync(CORE_OUT_DIR) || !existsSync(STRATEGIES_OUT_DIR)) {
+    console.error(`\n❌ ERROR: one or more Foundry output directories are missing`);
     console.error('   Run "forge build" first to generate artifacts.');
     process.exit(1);
   }
@@ -201,8 +226,8 @@ function main() {
 
   // Process each contract
   for (const [outputFile, artifactConfig] of Object.entries(CONTRACTS)) {
-    const isMerged = Array.isArray(artifactConfig);
-    const artifactPaths = isMerged ? artifactConfig : [artifactConfig];
+    const artifactPaths = artifactConfig;
+    const isMerged = artifactPaths.length > 1;
 
     console.log(`\nProcessing: ${outputFile}${isMerged ? ' (merged)' : ''}`);
 
@@ -212,11 +237,10 @@ function main() {
     const sources = [];
     const preMergeCounts = [];
 
-    for (const artifactRelPath of artifactPaths) {
-      const artifactPath = join(OUT_DIR, artifactRelPath);
-      const sourceName = basename(dirname(artifactRelPath));
-      console.log(`  Source: ${artifactRelPath}`);
-      sources.push(artifactRelPath);
+    for (const artifactPath of artifactPaths) {
+      const sourceName = basename(dirname(artifactPath));
+      console.log(`  Source: ${artifactPath}`);
+      sources.push(artifactPath);
       sourceNames.push(sourceName);
 
       const result = extractAbi(artifactPath);

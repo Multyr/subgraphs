@@ -1,7 +1,42 @@
 # Multyr Vault Subgraph - Deployment Documentation
 
-> **Version:** 2.1 (with PriceStatus support)
-> **Last Updated:** 2026-01-26
+> **Version:** 3.3 (25 Sep 2026 Arbitrum deployment + economic-exit withdrawals)
+> **Last Updated:** 2026-09-29
+
+## v3 dashboard work order (SG-1…SG-16)
+
+See `docs/DASHBOARD-QUERIES.graphql` (canonical query set) and `docs/CROSS-CHAIN.md`.
+
+- **Address source of truth:** `deployments/<chain>/*.json`. `arbitrum/subgraph.yaml`
+  points at the 25 Sep 2026 deployment (multyr-core `core-deployer-20260925.json`,
+  `claim-deployer-20260925.json`). Start blocks are exact receipt block numbers:
+  factory `508771925`, GlobalConfig `508771938`, VaultUpkeep `508772145`,
+  ClaimSettlementUpkeep `508775680`, StrategyUpkeep `508775176`.
+- **Dynamic sources:** CoreVault is created from the factory registration event
+  at block `508772034`; StrategyRouter is created from vault wiring; the USDC
+  strategy is created from the router's `StrategyRegistered` event.
+- **Withdrawal model (economic exit):** a request burns the net shares and fixes
+  `assetsOwed` (`EpochWithdrawalRequested`), so the exit is booked on the user's
+  position at request. Instant (`InstantExit`) and force exits (`ForceExit`) are
+  booked in their own tx. Claims (`EpochAssetsClaimed`) only pay out, and a
+  cohort that recovered < 100% (`EpochRecoveryCrystallized`) books the haircut
+  as a realized loss. The claim-payout `Withdraw` (sender == vault) is skipped
+  to avoid double counting. There is no cancel and no `ppsAtClose` any more.
+- **Undeployed sources:** rewards/referral periphery, incentives, and
+  FeeCollectorUpkeep remain dormant. Do not replace them with guessed addresses.
+- **base / ethereum manifests are still stubbed** (dead addresses). Activate them
+  only after those chains have verified deployment addresses and start blocks.
+- **Network source parity:** `arbitrum/src/` + `arbitrum/abis/` + `arbitrum/tests/`
+  are the source of truth; `npm run sync` copies them to `base/` and `ethereum/`.
+  CI fails if they drift (`npm run sync:check`).
+- **Retention (SG-7):** keep `VaultHourData` ~90 days, `VaultDayData` indefinitely.
+  This is a Graph Node indexer pruning setting (`--prune` / `indexerHints`), not a
+  schema concern — configure it on the indexer, not here.
+- **ChainlinkFeed registry (SG-4):** USDC feeds are seeded lazily from the
+  hardcoded per-chain constants. Non-USDC assets resolve to `status: MISSING`
+  with null USD values until a `ChainlinkFeed` row exists. GlobalConfig asset
+  and vault-oracle events now resolve the middleware's actual Chainlink feed
+  and register it dynamically.
 
 ## Schema Updates (v2.1)
 
@@ -10,10 +45,10 @@ Added `PriceStatus` enum to track USD price reliability:
 
 ```graphql
 enum PriceStatus {
-  VALID      # Price from Chainlink oracle, fresh (<1 hour)
-  STALE      # Price from Chainlink but older than 1 hour
+  VALID      # Price from Chainlink oracle, fresh (<=24 hours)
+  STALE      # Price from Chainlink and older than 24 hours
   FALLBACK   # Using hardcoded fallback (1.0 for stablecoins)
-  MISSING    # No price source - USD values are 0
+  MISSING    # No price source - USD values are null
 }
 ```
 
@@ -160,29 +195,32 @@ Build completed: build\subgraph.yaml
 
 ### Q1 - Vault List with TVL Sorting
 ```graphql
-query VaultListByTvl($first: Int!, $skip: Int!) {
+query VaultListByTvl($first: Int!, $lastId: ID!) {
   vaults(
     first: $first
-    skip: $skip
-    orderBy: tvlUsd
-    orderDirection: desc
+    where: { id_gt: $lastId }
+    orderBy: id
+    orderDirection: asc
   ) {
     id
     address
     name
     symbol
     tvlUsd
+    priceStatus
     totalAssets
     totalSupply
     sharePrice
     apy7d
+    netApy7d
     status
     depositsEnabled
     withdrawalsEnabled
   }
 }
 ```
-Variables: `{ "first": 10, "skip": 0 }`
+Variables: `{ "first": 1000, "lastId": "" }`. Continue with the final returned
+`id`, then sort the complete set by TVL in the client.
 
 ### Q2 - Vault Detail by Address
 ```graphql
@@ -269,12 +307,14 @@ Variables: `{ "user": "0x..." }`
 
 ### Q4 - User Transactions Filtered by Type
 ```graphql
-query UserTransactionsByType($user: Bytes!, $type: TransactionType!) {
+query UserTransactionsByType(
+  $user: Bytes!, $type: TransactionType!, $first: Int!, $lastId: ID!
+) {
   transactions(
-    where: { user: $user, type: $type }
-    orderBy: timestamp
-    orderDirection: desc
-    first: 50
+    first: $first
+    where: { user: $user, type: $type, id_gt: $lastId }
+    orderBy: id
+    orderDirection: asc
   ) {
     id
     hash
@@ -297,7 +337,7 @@ query UserTransactionsByType($user: Bytes!, $type: TransactionType!) {
   }
 }
 ```
-Variables: `{ "user": "0x...", "type": "DEPOSIT" }`
+Variables: `{ "user": "0x...", "type": "DEPOSIT", "first": 1000, "lastId": "" }`
 
 ---
 
