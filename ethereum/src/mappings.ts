@@ -1,3 +1,4 @@
+import { refreshCurrentScoring } from "./helpers/currentScoring"
 import { Address, BigInt, BigDecimal, dataSource, ethereum, Bytes } from "@graphprotocol/graph-ts"
 
 // Factory Events (from VaultFactory.json ABI)
@@ -464,6 +465,7 @@ import {
   getOrCreateVaultDeployment,
   syncVaultDeploymentFromVault,
   getOrCreateStrategyDeployment,
+  refreshStrategyDeploymentAssets,
   getOrCreateUserPosition,
   updatePositionValues,
   getOrCreateUserPositionDayData,
@@ -1853,6 +1855,7 @@ export function handleInsolvencyEntered(event: InsolvencyEnteredEvent): void {
   vault.grossAssets = event.params.grossAssets
   vault.totalOwed = event.params.totalOwed
   vault.liabilityIndex = event.params.liabilityIndex
+  refreshLiabilityState(vault)
   vault.updatedAt = event.block.timestamp
   vault.save()
 
@@ -1871,6 +1874,7 @@ export function handleInsolvencyExited(event: InsolvencyExitedEvent): void {
   vault.grossAssets = event.params.grossAssets
   vault.totalOwed = event.params.totalOwed
   vault.liabilityIndex = ONE_E18
+  refreshLiabilityState(vault)
   vault.updatedAt = event.block.timestamp
   vault.save()
 
@@ -2127,9 +2131,8 @@ export function handleVaultPpsSnapshot(event: VaultPpsSnapshotEvent): void {
   snapshot.txHash = event.transaction.hash
   snapshot.save()
 
-  vault.totalAssets = event.params.totalAssets
-  vault.totalSupply = event.params.totalSupply
-  vault.sharePrice = event.params.pps
+  // Keep event-time values on PpsSnapshot; Vault represents one block-end state.
+  refreshVaultState(vault, event.block)
   vault.updatedAt = event.block.timestamp
   // APY snapshot — canonical save point
   snapshotVaultDayData(vault, event.block)
@@ -3027,6 +3030,8 @@ export function handleStrategyRegistered(event: StrategyRegisteredEvent): void {
       sd.updatedAt = event.block.timestamp
       sd.updatedAtBlock = event.block.number
       sd.save()
+      refreshStrategyDeploymentAssets(sd, event.block)
+      refreshCurrentScoring(sd, event, "REGISTRATION")
 
       // Create StrategyTemplate to index adapter events going forward
       StrategyTemplate.create(event.params.strat)
@@ -3294,6 +3299,7 @@ export function handleGasPerStrategyWithdrawUpdated(event: GasPerStrategyWithdra
 // =============================================================================
 
 export function handleStrategyHarvested(event: StrategyHarvestedEvent): void {
+  refreshStrategyAssets(event.params.strat, event)
   let chainId = getChainIdFromNetwork(dataSource.network())
   let id = createEventId(event.transaction.hash, event.logIndex)
 
@@ -5364,6 +5370,24 @@ export function handleGasEmaUpdated(event: GasEmaUpdatedEvent): void {
     snap.isDeposit = event.params.isDeposit
   }
   snap.emaGas = event.params.emaGas
+  // Read execution provenance, not the count of historical EMA events. Legacy
+  // keeper-reported samples do not establish reliability for EMA-first pricing.
+  snap.observationCount = null
+  snap.observationUpdatedAt = null
+  let measured = StrategyTemplateContract.bind(event.address)
+  if (event.params.isDeposit) {
+    let evidence = measured.try_depositGasObservation(event.params.adapter)
+    if (!evidence.reverted) {
+      snap.observationCount = evidence.value.value0
+      snap.observationUpdatedAt = evidence.value.value1
+    }
+  } else {
+    let evidence = measured.try_withdrawGasObservation(event.params.adapter)
+    if (!evidence.reverted) {
+      snap.observationCount = evidence.value.value0
+      snap.observationUpdatedAt = evidence.value.value1
+    }
+  }
   snap.updatedAtBlock = event.block.number
   snap.updatedAtTimestamp = event.block.timestamp
   snap.save()
@@ -5399,6 +5423,7 @@ export function handleRebalancePlanCreated(event: RebalancePlanCreatedEvent): vo
 // Solution: introduce a minimal transient helper — store last plan id on StrategyHealthFlag (reused).
 
 export function handleRebalanceStepExecuted(event: RebalanceStepExecutedEvent): void {
+  refreshStrategyAssets(event.address, event)
   let chainId = getChainIdFromNetwork(dataSource.network())
   let sdId = strategyDeploymentId(event.address, chainId)
   let stepId = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
@@ -5581,6 +5606,7 @@ export function handleScoringComputed(event: ScoringComputedEvent): void {
 }
 
 export function handleDeployIdleExecuted(event: DeployIdleExecutedEvent): void {
+  refreshStrategyAssets(event.address, event)
   let chainId = getChainIdFromNetwork(dataSource.network())
   let sdId = strategyDeploymentId(event.address, chainId)
   let evId = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
@@ -5611,4 +5637,28 @@ export function handleDegradedViewsObserved(event: DegradedViewsObservedEvent): 
   flag.updatedAtBlock = event.block.number
   flag.updatedAtTimestamp = event.block.timestamp
   flag.save()
+}
+
+function refreshStrategyAssets(strategyAddress: Address, event: ethereum.Event, trigger: string = "ASSET_CHANGE"): void {
+  let block = event.block
+  let core = StrategyTemplateContract.bind(strategyAddress).try_core()
+  if (core.reverted) return
+  let chainId = getChainIdFromNetwork(dataSource.network())
+  let vault = Vault.load(core.value.toHexString().toLowerCase() + "-" + chainId.toString())
+  if (vault === null) return
+  let sd = getOrCreateStrategyDeployment(vault, strategyAddress, block)
+  refreshStrategyDeploymentAssets(sd, block)
+  refreshCurrentScoring(sd, event, trigger)
+}
+
+export function handleStrategyAssetsChanged(event: ethereum.Event): void {
+  refreshStrategyAssets(event.address, event)
+}
+
+export function handleRouterStrategyAssetsChanged(event: ethereum.Event): void {
+  refreshStrategyAssets(event.parameters[0].value.toAddress(), event, "ROUTER_CASH_FLOW")
+}
+
+export function handleScoringInputsPoked(event: ethereum.Event): void {
+  refreshStrategyAssets(event.parameters[0].value.toAddress(), event, "KEEPER_INPUT_REFRESH")
 }

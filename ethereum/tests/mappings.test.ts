@@ -1,3 +1,4 @@
+import { Bytes } from "@graphprotocol/graph-ts"
 import {
   test,
   assert,
@@ -275,6 +276,16 @@ function positionId(user: Address): string {
 
 beforeEach(() => {
   clearStore()
+  for (let i = 0; i < 2; i++) {
+    let selector = i == 0 ? "0xeacdc5ff" : "0x4e49acac"
+    createMockedFunction(VAULT, "moduleOf", "moduleOf(bytes4):(address)")
+      .withArgs([ethereum.Value.fromFixedBytes(Bytes.fromHexString(selector))]).reverts()
+  }
+  createMockedFunction(VAULT, "params", "params():(address)").reverts()
+  createMockedFunction(VAULT, "grossAssets", "grossAssets():(uint256)").reverts()
+  createMockedFunction(VAULT, "totalOwed", "totalOwed():(uint256)").reverts()
+  createMockedFunction(VAULT, "liabilityIndex", "liabilityIndex():(uint256)").reverts()
+  createMockedFunction(VAULT, "isInsolvent", "isInsolvent():(bool)").reverts()
   dataSourceMock.setNetwork("arbitrum-one")
 })
 
@@ -464,6 +475,11 @@ test("Insolvency events toggle the vault liability state", () => {
   entered.parameters.push(uint("grossAssets", 80))
   entered.parameters.push(uint("totalOwed", 100))
   entered.parameters.push(new ethereum.EventParam("liabilityIndex", ethereum.Value.fromUnsignedBigInt(BigInt.fromString("800000000000000000"))))
+  createMockedFunction(VAULT, "isInsolvent", "isInsolvent():(bool)").returns([ethereum.Value.fromBoolean(true)])
+  createMockedFunction(VAULT, "grossAssets", "grossAssets():(uint256)").returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(80))])
+  createMockedFunction(VAULT, "totalAssets", "totalAssets():(uint256)").returns([ethereum.Value.fromUnsignedBigInt(BigInt.zero())])
+  createMockedFunction(VAULT, "totalOwed", "totalOwed():(uint256)").returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(100))])
+  createMockedFunction(VAULT, "liabilityIndex", "liabilityIndex():(uint256)").returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromString("800000000000000000"))])
   handleInsolvencyEntered(entered)
   assert.fieldEquals("Vault", vaultId, "isInsolvent", "true")
   assert.fieldEquals("Vault", vaultId, "totalOwed", "100")
@@ -472,7 +488,11 @@ test("Insolvency events toggle the vault liability state", () => {
   let exited = vaultEvent<InsolvencyExited>(2_000)
   exited.parameters.push(uint("grossAssets", 120))
   exited.parameters.push(uint("totalOwed", 100))
+  createMockedFunction(VAULT, "isInsolvent", "isInsolvent():(bool)").returns([ethereum.Value.fromBoolean(false)])
+  createMockedFunction(VAULT, "grossAssets", "grossAssets():(uint256)").returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(120))])
+  createMockedFunction(VAULT, "totalAssets", "totalAssets():(uint256)").returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(20))])
   handleInsolvencyExited(exited)
+  assert.fieldEquals("Vault", vaultId, "totalAssets", "20")
   assert.fieldEquals("Vault", vaultId, "isInsolvent", "false")
   assert.entityCount("VaultSolvencyEvent", 2)
 })

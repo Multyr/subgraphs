@@ -2065,6 +2065,9 @@ type GasEmaSnapshot @entity {
   adapter: Bytes!
   isDeposit: Boolean!
   emaGas: BigInt!
+  # Null for legacy strategies without execution-observation metadata.
+  observationCount: BigInt
+  observationUpdatedAt: BigInt
   updatedAtBlock: BigInt!
   updatedAtTimestamp: BigInt!
 }
@@ -2293,4 +2296,28 @@ type IncentiveParamsSet @entity {
   effectiveFrom: BigInt!
   blockTimestamp: BigInt!
   txHash: Bytes!
+}
+
+# Latest event-triggered RPC observation, NOT the scores behind a past decision.
+# Values are end-of-block reads. Null means unavailable, never an implicit zero.
+type CurrentScoringSnapshot @entity {
+  id: ID!
+  chainId: Int!
+  strategy: StrategyDeployment!
+  adapter: Bytes!
+  source: String!
+  trigger: String!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+  enabled: Boolean
+  currentAPYBps: Int
+  effectiveAPYBps: Int
+  allocatorAPYBps: Int
+  targetAlloc: BigInt
+  positionAssets: BigInt
+  riskScoreBps: Int
+  stabilityEMA: BigInt
+  cachedLiquidityBps: Int
+  allocatorReadSucceeded: Boolean!
 }
