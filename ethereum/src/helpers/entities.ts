@@ -11,7 +11,8 @@ import {
   User,
   ProtocolDeployment,
   VaultDeployment,
-  StrategyDeployment
+  StrategyDeployment,
+  StrategyUpkeepLookup
 } from "../../generated/schema"
 import { Vault as VaultContract } from "../../generated/templates/VaultTemplate/Vault"
 import { Strategy as StrategyContract } from "../../generated/templates/StrategyTemplate/Strategy"
@@ -822,8 +823,9 @@ export function getOrCreateStrategyDeployment(
     sd.priority = 0
     sd.weightBps = 0
     sd.totalAssets = ZERO_BI
-    sd.strategyUpkeep = null
-    sd.upkeepKind = null
+    let upkeepLookup = StrategyUpkeepLookup.load(strategyAddress.toHexString().toLowerCase() + "-" + vault.chainId.toString())
+    sd.strategyUpkeep = upkeepLookup === null ? null : upkeepLookup.upkeep
+    sd.upkeepKind = upkeepLookup === null ? null : "lending"
     sd.updatedAt = block.timestamp
     sd.updatedAtBlock = block.number
   }

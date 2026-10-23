@@ -12,6 +12,10 @@ import { Address, BigInt, Bytes, ValueKind, ethereum } from "@graphprotocol/grap
 
 import {
   handleVaultCreated,
+  handleStrategyToggled,
+  handleWeightsSet,
+  handleUpkeepStrategyAdded,
+  handleUpkeepStrategyRemoved,
   handleGasEmaUpdated,
   handleStrategyUpkeepPerformed,
   handleAllPaused,
@@ -19,7 +23,7 @@ import {
   handleRouterStrategyAssetsChanged,
   handleAllUnpaused
 } from "../src/mappings"
-import { GasEmaSnapshot, Vault, CurrentScoringSnapshot } from "../generated/schema"
+import { GasEmaSnapshot, Vault, CurrentScoringSnapshot, VaultStrategy } from "../generated/schema"
 import { refreshLiabilityState, getOrCreateStrategyDeployment, refreshStrategyDeploymentAssets } from "../src/helpers/entities"
 import { VaultCreated } from "../generated/VaultFactory/VaultFactory"
 import { UpkeepPerformed as StrategyUpkeepPerformed } from "../generated/StrategyUpkeep/StrategyUpkeep"
@@ -274,4 +278,72 @@ test("EMA provenance comes from execution observations and clears for legacy uns
   let snap = GasEmaSnapshot.load(id)!
   assert.i32Equals(snap.get("observationCount")!.kind, ValueKind.NULL)
   assert.i32Equals(snap.get("observationUpdatedAt")!.kind, ValueKind.NULL)
+})
+
+import { StrategyAdded, StrategyRemoved } from "../generated/StrategyUpkeep/StrategyUpkeep"
+import { StrategyToggled, WeightsSet } from "../generated/templates/StrategyRouterTemplate/StrategyRouter"
+const ROUTER = Address.fromString("0x7000000000000000000000000000000000000007")
+
+function upkeepAdded(upkeep: Address): void {
+  let ev = changetype<StrategyAdded>(newMockEvent())
+  ev.address = upkeep
+  ev.parameters = [new ethereum.EventParam("strategy", ethereum.Value.fromAddress(STRATEGY))]
+  handleUpkeepStrategyAdded(ev)
+}
+function upkeepRemoved(upkeep: Address): void {
+  let ev = changetype<StrategyRemoved>(newMockEvent())
+  ev.address = upkeep
+  ev.parameters = [new ethereum.EventParam("strategy", ethereum.Value.fromAddress(STRATEGY))]
+  handleUpkeepStrategyRemoved(ev)
+}
+
+test("Upkeep added before registration is linked when the deployment is created", () => {
+  seedVault()
+  createMockedFunction(STRATEGY, "core", "core():(address)").returns([ethereum.Value.fromAddress(VAULT)])
+  upkeepAdded(UPKEEP)
+  assert.entityCount("StrategyDeployment", 0)
+  let sd = getOrCreateStrategyDeployment(Vault.load(vaultId)!, STRATEGY, newMockEvent().block)
+  sd.save()
+  assert.fieldEquals("StrategyDeployment", sdId, "strategyUpkeep", UPKEEP.toHexString())
+})
+
+test("Upkeep replacement links existing deployment and stale removal preserves replacement", () => {
+  seedStrategyAssets()
+  upkeepAdded(UPKEEP)
+  upkeepAdded(OWNER)
+  upkeepRemoved(UPKEEP)
+  assert.fieldEquals("StrategyDeployment", sdId, "strategyUpkeep", OWNER.toHexString())
+  upkeepRemoved(OWNER)
+  assert.fieldEquals("StrategyDeployment", sdId, "strategyUpkeep", "null")
+  assert.entityCount("StrategyUpkeepLookup", 0)
+})
+
+test("Router toggle and weights keep deployment metadata consistent", () => {
+  seedStrategyAssets()
+  let vs = new VaultStrategy(ROUTER.toHexString() + "-42161-" + STRATEGY.toHexString())
+  vs.router = ROUTER.toHexString() + "-42161"
+  vs.strategy = STRATEGY
+  vs.chainId = 42161
+  vs.vault = vaultId
+  vs.priority = 0
+  vs.weightBps = 10000
+  vs.enabled = true
+  vs.totalAssets = BigInt.zero()
+  vs.totalHarvestCount = BigInt.zero()
+  vs.totalHarvestFailCount = BigInt.zero()
+  vs.lastHarvestFailed = false
+  vs.createdAt = BigInt.zero()
+  vs.updatedAt = BigInt.zero()
+  vs.save()
+  let ev = changetype<StrategyToggled>(newMockEvent())
+  ev.address = ROUTER
+  ev.parameters = [new ethereum.EventParam("strat", ethereum.Value.fromAddress(STRATEGY)), new ethereum.EventParam("enabled", ethereum.Value.fromBoolean(false))]
+  handleStrategyToggled(ev)
+  assert.fieldEquals("StrategyDeployment", sdId, "enabled", "false")
+  let weights = changetype<WeightsSet>(newMockEvent())
+  weights.address = ROUTER
+  weights.logIndex = BigInt.fromI32(1)
+  weights.parameters = [new ethereum.EventParam("strats", ethereum.Value.fromAddressArray([STRATEGY])), new ethereum.EventParam("weights", ethereum.Value.fromI32Array([0]))]
+  handleWeightsSet(weights)
+  assert.fieldEquals("StrategyDeployment", sdId, "weightBps", "0")
 })

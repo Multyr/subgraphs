@@ -1,5 +1,5 @@
 import { refreshCurrentScoring } from "./helpers/currentScoring"
-import { Address, BigInt, BigDecimal, dataSource, ethereum, Bytes } from "@graphprotocol/graph-ts"
+import { Address, BigInt, BigDecimal, dataSource, ethereum, Bytes, store } from "@graphprotocol/graph-ts"
 
 // Factory Events (from VaultFactory.json ABI)
 import {
@@ -410,6 +410,8 @@ import {
   StrategyHealthFlag,
   // Ops dashboard entities
   StrategyUpkeepBinding,
+  StrategyUpkeepLookup,
+  StrategyDeployment,
   VaultUpkeepBinding,
   VaultDeployment,
   // IncentivesEngine v2 entities
@@ -3098,6 +3100,16 @@ export function handleStrategyToggled(event: StrategyToggledEvent): void {
     strategy.enabled = event.params.enabled
     strategy.updatedAt = event.block.timestamp
     strategy.save()
+    let vaultId = strategy.vault
+    if (vaultId !== null) {
+      let sd = StrategyDeployment.load(event.params.strat.toHexString().toLowerCase() + "-" + vaultId)
+      if (sd !== null) {
+        sd.enabled = event.params.enabled
+        sd.updatedAt = event.block.timestamp
+        sd.updatedAtBlock = event.block.number
+        sd.save()
+      }
+    }
   }
 
   let id = createEventId(event.transaction.hash, event.logIndex)
@@ -3127,6 +3139,16 @@ export function handleWeightsSet(event: WeightsSetEvent): void {
       strategy.weightBps = BigInt.fromI32(weights[i]).toI32()
       strategy.updatedAt = event.block.timestamp
       strategy.save()
+      let vaultId = strategy.vault
+      if (vaultId !== null) {
+        let sd = StrategyDeployment.load(strats[i].toHexString().toLowerCase() + "-" + vaultId)
+        if (sd !== null) {
+          sd.weightBps = weights[i]
+          sd.updatedAt = event.block.timestamp
+          sd.updatedAtBlock = event.block.number
+          sd.save()
+        }
+      }
     }
   }
 
@@ -4723,12 +4745,40 @@ export function handleUpkeepStrategyAdded(event: UpkeepStrategyAddedEvent): void
   binding.strategyAddress = event.params.strategy
   binding.upkeepKind = "lending"
   binding.vault = null
+  let lookup = new StrategyUpkeepLookup(event.params.strategy.toHexString().toLowerCase() + "-" + chainId.toString())
+  lookup.upkeep = event.address
+  lookup.save()
+  let sd = StrategyDeployment.load(strategyDeploymentId(event.params.strategy, chainId))
+  if (sd !== null) {
+    binding.vault = sd.vault
+    sd.strategyUpkeep = event.address
+    sd.upkeepKind = "lending"
+    sd.updatedAt = event.block.timestamp
+    sd.updatedAtBlock = event.block.number
+    sd.save()
+  }
   binding.updatedAt = event.block.timestamp
   binding.save()
 }
 
 export function handleUpkeepStrategyRemoved(event: UpkeepStrategyRemovedEvent): void {
   let chainId = getChainIdFromNetwork(dataSource.network())
+  let lookupId = event.params.strategy.toHexString().toLowerCase() + "-" + chainId.toString()
+  let lookup = StrategyUpkeepLookup.load(lookupId)
+  if (lookup !== null && lookup.upkeep.equals(event.address)) {
+    store.remove("StrategyUpkeepLookup", lookupId)
+  }
+  let sd = StrategyDeployment.load(strategyDeploymentId(event.params.strategy, chainId))
+  if (sd !== null) {
+    let upkeep = sd.strategyUpkeep
+    if (upkeep !== null && upkeep.equals(event.address)) {
+      sd.strategyUpkeep = null
+      sd.upkeepKind = null
+      sd.updatedAt = event.block.timestamp
+      sd.updatedAtBlock = event.block.number
+      sd.save()
+    }
+  }
   let bindingId = event.address.toHexString().toLowerCase() + "-" + event.params.strategy.toHexString().toLowerCase() + "-" + chainId.toString()
   let binding = StrategyUpkeepBinding.load(bindingId)
   if (binding !== null) {

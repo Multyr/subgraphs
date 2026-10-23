@@ -2321,3 +2321,9 @@ type CurrentScoringSnapshot @entity {
   cachedLiquidityBps: Int
   allocatorReadSucceeded: Boolean!
 }
+
+"""Latest lending upkeep association, including associations created before router registration."""
+type StrategyUpkeepLookup @entity {
+  id: ID!
+  upkeep: Bytes!
+}
