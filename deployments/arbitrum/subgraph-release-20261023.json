@@ -1,19 +1,22 @@
 {
-  "version": "v3.6.0-ema-first-20261023",
+  "version": "v3.6.1-ema-first-20261023",
   "studioSlug": "multyr-subgraph",
-  "deployment": "QmVAjbqwne7e5pQiZRi8ap1VBfZ3fsDgGjymgqv3FRD9h8",
-  "queryUrl": "https://api.studio.thegraph.com/query/1758013/multyr-subgraph/v3.6.0-ema-first-20261023",
-  "deployedAt": "2026-10-22T22:52:02.648090+00:00",
+  "deployment": "QmdApkpTSuGSqH1GRn2UFHeRPM3ThD89wFcqwNXGPogxub",
+  "queryUrl": "https://api.studio.thegraph.com/query/1758013/multyr-subgraph/v3.6.1-ema-first-20261023",
+  "deployedAt": "2026-10-23T10:46:52.267025+00:00",
   "validation": {
     "codegen": "passed",
     "build": "passed",
-    "mappingTests": 30
+    "mappingTests": 33,
+    "queryValidation": "passed"
   },
   "status": "Studio deployed; network publication and signal not performed",
-  "migration": "pending Safe execution; strategy discovery follows StrategyRegistered",
-  "initialIndexingCheck": {
-    "block": 513966575,
+  "migration": "executed: replacement enabled, old strategies disabled, reserve 0%",
+  "mappingSourceCommit": "95633ad",
+  "indexingCheck": {
+    "block": 517511218,
     "hasIndexingErrors": false,
-    "caughtUpToRelease": false
+    "caughtUpToMigration": true,
+    "activeUpkeepLinked": true
   }
 }

@@ -1,0 +1,40 @@
+{
+  "data": {
+    "strategyDeployments": [
+      {
+        "id": "0x2ad722b6241605481829e4b251ae8a4ba8be86ce-0x5e0cdb76487bd96ff069ef7f78eadf5b5909c8cb-42161",
+        "strategyAddress": "0x2ad722b6241605481829e4b251ae8a4ba8be86ce",
+        "enabled": true,
+        "totalAssets": "20478558",
+        "strategyUpkeep": "0xab30b7d1ade850b6b122bcff29f389cf1d051d44",
+        "weightBps": 10000,
+        "updatedAtBlock": "517509417"
+      },
+      {
+        "id": "0x7bf0f446bb20b54597e66a602cb94d0f231d24e2-0x5e0cdb76487bd96ff069ef7f78eadf5b5909c8cb-42161",
+        "strategyAddress": "0x7bf0f446bb20b54597e66a602cb94d0f231d24e2",
+        "enabled": false,
+        "totalAssets": "0",
+        "strategyUpkeep": "0x05202b06647d4597fb851162a1e32aa8437eefc3",
+        "weightBps": 0,
+        "updatedAtBlock": "515700337"
+      },
+      {
+        "id": "0xa9e676d15976a1332905238ca609dff9a484efe0-0x5e0cdb76487bd96ff069ef7f78eadf5b5909c8cb-42161",
+        "strategyAddress": "0xa9e676d15976a1332905238ca609dff9a484efe0",
+        "enabled": false,
+        "totalAssets": "0",
+        "strategyUpkeep": "0xbcac314e7237b14e11644fc6ba73675c8c0612df",
+        "weightBps": 0,
+        "updatedAtBlock": "517504707"
+      }
+    ],
+    "_meta": {
+      "block": {
+        "number": 517511218
+      },
+      "hasIndexingErrors": false,
+      "deployment": "QmdApkpTSuGSqH1GRn2UFHeRPM3ThD89wFcqwNXGPogxub"
+    }
+  }
+}

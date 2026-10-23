@@ -55,5 +55,7 @@
   },
   "sourceCommit": "407b3df",
   "sourceTag": "usdc-lending-ema-first-20261023",
-  "status": "deployed-awaiting-Safe-migration"
+  "status": "active-migration-executed",
+  "targetIdleBufferBps": 0,
+  "migrationVerifiedAtBlock": 517507024
 }

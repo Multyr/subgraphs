@@ -1,0 +1,19 @@
+{
+  "version": "v3.6.0-ema-first-20261023",
+  "studioSlug": "multyr-subgraph",
+  "deployment": "QmVAjbqwne7e5pQiZRi8ap1VBfZ3fsDgGjymgqv3FRD9h8",
+  "queryUrl": "https://api.studio.thegraph.com/query/1758013/multyr-subgraph/v3.6.0-ema-first-20261023",
+  "deployedAt": "2026-10-22T22:52:02.648090+00:00",
+  "validation": {
+    "codegen": "passed",
+    "build": "passed",
+    "mappingTests": 30
+  },
+  "status": "Studio deployed; network publication and signal not performed",
+  "migration": "pending Safe execution; strategy discovery follows StrategyRegistered",
+  "initialIndexingCheck": {
+    "block": 513966575,
+    "hasIndexingErrors": false,
+    "caughtUpToRelease": false
+  }
+}
