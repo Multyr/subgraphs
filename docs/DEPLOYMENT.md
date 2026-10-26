@@ -1,19 +1,35 @@
+## Current release: EMA-first, 23 October 2026
+
+Published version: `v3.6.1-ema-first-20261023`.
+CID: `QmdApkpTSuGSqH1GRn2UFHeRPM3ThD89wFcqwNXGPogxub`.
+Current strategy: `0x2AD722B6241605481829E4B251AE8A4Ba8Be86cE`.
+Current upkeep: `0xAB30b7D1ADe850b6b122bcfF29F389CF1D051D44`.
+See `../deployments/arbitrum/subgraph-release-20261023.json` for endpoint and
+publication evidence. Earlier release notes below are historical. Publishing
+and successful indexing do not establish burn-in acceptance.
+
+Deployed Studio version: `v3.5.0-adapter-fixes-20261019`. Release details and query endpoint: [release record](../deployments/arbitrum/subgraph-release-20261019.json). Initial query showed no indexing errors; historical replay remains in progress.
+
+## October 19 adapter correction indexing
+
+The current strategy `0xa9E676D15976A1332905238ca609Dff9A484Efe0` is discovered through Router registration. The manifest retains historical upkeep `0x05202b06…` and adds current upkeep `0xbcaC314E7237b14E11644FC6Ba73675c8c0612DF` from exact L2 deployment block **515604935**. Adapter registration/toggle events drive activation; corrected adapters are not hardcoded as active before Safe execution. The unused replacement strategy is not added as a static source. Studio slug is `multyr-subgraph`, matching README.
+
 # Multyr Vault Subgraph - Deployment Documentation
 
-> **Version:** 3.3 (25 Sep 2026 Arbitrum deployment + economic-exit withdrawals)
-> **Last Updated:** 2026-09-29
+> **Version:** 3.4 (9 Oct 2026 Arbitrum deployment + economic-exit withdrawals)
+> **Last Updated:** 2026-10-10
 
 ## v3 dashboard work order (SG-1…SG-16)
 
 See `docs/DASHBOARD-QUERIES.graphql` (canonical query set) and `docs/CROSS-CHAIN.md`.
 
 - **Address source of truth:** `deployments/<chain>/*.json`. `arbitrum/subgraph.yaml`
-  points at the 25 Sep 2026 deployment (multyr-core `core-deployer-20260925.json`,
-  `claim-deployer-20260925.json`). Start blocks are exact receipt block numbers:
-  factory `508771925`, GlobalConfig `508771938`, VaultUpkeep `508772145`,
-  ClaimSettlementUpkeep `508775680`, StrategyUpkeep `508775176`.
+  points at the 9 Oct 2026 deployment (deployment-20261009 receipts). Start
+  blocks are exact receipt block numbers: factory `513029843`, GlobalConfig
+  `513029857`, VaultUpkeep `513030022`, ClaimSettlementUpkeep `513035932`,
+  StrategyUpkeep `513032806`.
 - **Dynamic sources:** CoreVault is created from the factory registration event
-  at block `508772034`; StrategyRouter is created from vault wiring; the USDC
+  at block `513029918`; StrategyRouter is created from vault wiring; the USDC
   strategy is created from the router's `StrategyRegistered` event.
 - **Withdrawal model (economic exit):** a request burns the net shares and fixes
   `assetsOwed` (`EpochWithdrawalRequested`), so the exit is booked on the user's

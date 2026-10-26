@@ -1,0 +1,24 @@
+{
+  "version": "v3.5.0-adapter-fixes-20261019",
+  "studioSlug": "multyr-subgraph",
+  "deployment": "QmYqd9WskbxrgXfxSXAMyc4P695CNMzPRf1HPRUkJawEZg",
+  "queryUrl": "https://api.studio.thegraph.com/query/1758013/multyr-subgraph/v3.5.0-adapter-fixes-20261019",
+  "deployedAt": "2026-10-19T08:44:16.715543+00:00",
+  "validation": {
+    "codegen": "passed",
+    "build": "passed",
+    "matchstickTests": 29,
+    "sourceParity": "passed",
+    "dashboardQueries": "passed"
+  },
+  "initialIndexingCheck": {
+    "block": 513029842,
+    "hasIndexingErrors": false,
+    "currentStrategyIndexed": false
+  },
+  "notes": [
+    "Studio deployment; historical replay still in progress.",
+    "Preserved existing local mapping/schema improvements.",
+    "Adapter activation follows on-chain registration/toggle events."
+  ]
+}

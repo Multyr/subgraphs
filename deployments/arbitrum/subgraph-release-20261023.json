@@ -10,7 +10,7 @@
     "mappingTests": 33,
     "queryValidation": "passed"
   },
-  "status": "Studio deployed; network publication and signal not performed",
+  "status": "Published on The Graph Network (Arbitrum One)",
   "migration": "executed: replacement enabled, old strategies disabled, reserve 0%",
   "mappingSourceCommit": "95633ad",
   "indexingCheck": {
@@ -18,5 +18,9 @@
     "hasIndexingErrors": false,
     "caughtUpToMigration": true,
     "activeUpkeepLinked": true
-  }
+  },
+  "explorerUrl": "https://thegraph.com/explorer/subgraphs/8eRv2fiGNJifP7Aif9FhaiZYWGXx69xXaDJV8XKx4LbZ?view=Query&chain=arbitrum-one",
+  "subgraphId": "8eRv2fiGNJifP7Aif9FhaiZYWGXx69xXaDJV8XKx4LbZ",
+  "publicationEvidence": "Publication confirmed by the user on 2026-10-26 with the Graph Explorer link. This correction does not claim a new independent network CID or transaction verification.",
+  "publicationStatusUpdatedOn": "2026-10-26"
 }

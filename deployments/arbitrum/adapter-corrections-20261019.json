@@ -1,0 +1,35 @@
+{
+  "strategy": "0xa9E676D15976A1332905238ca609Dff9A484Efe0",
+  "upkeep": "0xbcaC314E7237b14E11644FC6Ba73675c8c0612DF",
+  "replacements": [
+    {
+      "key": "venusAdapter",
+      "old": "0xAba3D7015fFC9b8dEEb404389296864A1607E828",
+      "fresh": "0xB8fed94A1A7dc046402de039c0143aC48396eb7a",
+      "creationCodeHash": "0x3154ea07f6460f32c6aa6c7ea358bb56fbe10f3e2bde97041f4e5db331a56f01",
+      "runtimeCodeHash": "0x6a387780ea0a2f54030460446b6a95d81058100c8f5de7edc83f61481d9c5c4c"
+    },
+    {
+      "key": "morphoAdapter",
+      "old": "0x5A8ac17B80694ACE43F8c38a9cC13B7B08cc8555",
+      "fresh": "0x3e2E4eFE18909E614e74f197f5907d9f74dAdCc9",
+      "creationCodeHash": "0x0861a36d1c23f59f97a4656bb711294efd08e586cd8eaac288d65248bb687301",
+      "runtimeCodeHash": "0x9aec9c539a18d90000d375c1e6826fb5a1fb7439034d52c59c6d9c2bcaa8ecbd"
+    },
+    {
+      "key": "dolomiteAdapter",
+      "old": "0x6099803838D1bA17Cc03e7f2BDFe71C86924Fc0D",
+      "fresh": "0x17ff34D3ecE99Ee79F7ed0aC85809efDD34FC543",
+      "creationCodeHash": "0xbae1623fbe3562e06c5c49395c1f2fb4738733c0ac95dbcd7be2b13307c631d8",
+      "runtimeCodeHash": "0x3ec670e2c6be0a08a74221688b49e2b801db575c9d3e83830b7cad640558a769"
+    },
+    {
+      "key": "fluidAdapter",
+      "old": "0x862415F76ff11231De1B8833Ba5590Bc71b46957",
+      "fresh": "0x066200e9bbd1F2Bf191ed88cFf2Ab477220f5125",
+      "creationCodeHash": "0x42452077eef1d2f551b2521db7c842600ff24a8fdf5f4a51612e8deab168dc66",
+      "runtimeCodeHash": "0x2d3a258a8d3418e4e04818ca9b6ffba0c541d5d9d294d39e0144af0ab8c70b5d"
+    }
+  ],
+  "activation": "Track on-chain events; deployment alone does not enable an adapter."
+}
