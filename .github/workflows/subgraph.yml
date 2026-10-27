@@ -18,7 +18,9 @@ on:
 jobs:
   build-and-test:
     # SG-1 — Matchstick has no Windows binary; it runs fine on Linux/macOS.
-    runs-on: ubuntu-latest
+    # Pinned to 22.04: graph-cli only ships a Matchstick 0.6.0 binary for
+    # Ubuntu 22 and rejects ubuntu-latest (24.04) as an unsupported platform.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
