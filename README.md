@@ -50,18 +50,18 @@ Subgraph for indexing Multyr vaults across Arbitrum, Base, and Ethereum.
     └── bootstrap-manifest.json # Canonical values for ops console fallback
 ```
 
-## Active Arbitrum Deployment (25 Sep 2026)
+## Active Arbitrum Deployment (EMA-first, 23 Oct 2026)
 
 | Component | Address | Start block / indexing |
 |-----------|---------|------------------------|
-| VaultFactory | `0xa762B044C216c699A0bB1d0B7eA169a1716EB62d` | `508771925` |
-| CoreVault | `0x70c8F05fC599e96D1BB9ce6e9dc3e1d72A9A3d01` | dynamic template from factory registration `508772034` |
-| GlobalConfig | `0x04BA2Be680710B3Fae236bbFe18A5890A3829f98` | `508771938` |
-| VaultUpkeep | `0x0196b1fd654fcC5A61fe6E9431b39Be88BB32FFE` | `508772145` |
-| ClaimSettlementUpkeep | `0xD8CE7eA661A7E818337ad87E7bb87b56871da14E` | `508775680` |
-| StrategyRouter | `0x9E3C383092bd98Ce6b821Db5dD51fC5A9ccb231E` | dynamic template from vault wiring |
-| USDC strategy | `0xCC4A4A4CbB5e041ffE6CAc44D6F7F84B6F6cAEf1` | dynamic template from router registration (pending allowlist) |
-| StrategyUpkeep | `0xA01Aa76C782569691Aaf6A0790124Bd3E5Ff3ee6` | `508775176` |
+| VaultFactory | `0xfDE16c52e89ba078E9F71Cc64C2256c8E66CbB01` | `513029843` |
+| CoreVault | `0x5e0cdb76487BD96Ff069Ef7F78eaDF5b5909C8cb` | dynamic template from factory registration `513029918` |
+| GlobalConfig | `0x5680E4948759569DCB9D2eAB6a5504d733c83B2A` | `513029857` |
+| VaultUpkeep | `0xCD31634F472Fcc1D0b64FAE3ed72Bb7C0792B55f` | `513030022` |
+| ClaimSettlementUpkeep | `0x4e845762e66518f34641326C7f77fAf4B81c1260` | `513035932` |
+| StrategyRouter | `0x37847D2e12892e3298DEE695e7E971fba0Ca3e24` | dynamic template from vault wiring |
+| USDC strategy | `0x2AD722B6241605481829E4B251AE8A4Ba8Be86cE` | dynamic template from completed router registration |
+| StrategyUpkeep | `0xAB30b7D1ADe850b6b122bcfF29F389CF1D051D44` | `517356765` |
 
 This core uses the economic-exit withdrawal model: a withdrawal request burns the net shares and fixes `assetsOwed`, and the epoch is only a settlement bucket. The subgraph books the exit at request (or in the instant/force-exit tx), and a claim only pays it out. The rewards/referral periphery, incentives engine, and FeeCollectorUpkeep are not deployed in this phase and remain dormant in the Arbitrum manifest. The complete address and exact-block inventory is in `deployments/arbitrum/`.
 
@@ -137,3 +137,51 @@ The ops console should:
 - [Test Status](docs/TEST-STATUS.md)
 - [AssemblyScript Gotchas](docs/assemblyscript-compiler-gotchas.md)
 - [Bootstrap Registry](docs/bootstrap-registry.md)
+
+### Current scoring observations
+
+`currentScoringSnapshots` stores the latest end-of-block RPC observation per
+strategy/adapter. It refreshes at strategy registration, successful router deposits
+and redemptions, strategy harvest/recall/liquidity events, idle deployment, rebalance
+steps, and the keeper's `ExternalTVLPoked` event. A deposit therefore refreshes the
+snapshot even when it leaves cash idle. No separate keeper transaction is needed.
+
+These are **not historical allocation decisions**: `scoringSnapshots` remains
+reserved for the `ScoringComputed` event. Same-block transactions share the final
+block state. `positionAssets` is strategy bookkeeping, not live adapter NAV; risk,
+stability and liquidity fields are raw getter values before scoring fallbacks.
+`allocatorAPYBps` and `targetAlloc` come from `computeRebalanceInputs()`, not from a
+locally reconstructed scoring formula. Raw/normalized decision scores are not
+available through that unrestricted getter and are deliberately not fabricated.
+
+Failed optional reads are null, while genuine zero APY remains zero. A failed
+allocator call sets `allocatorReadSucceeded: false` and clears prior targets. If
+adapter enumeration itself fails, existing snapshots retain their old block/time.
+Check `blockNumber` and `timestamp` for freshness; this is event-driven, not polling.
+
+```graphql
+{
+  currentScoringSnapshots(where: {
+    chainId: 42161
+    adapter: "0x36ad387092ede0ccb8ca663dc216d0320d19b677"
+  }) {
+    adapter
+    currentAPYBps
+    effectiveAPYBps
+    allocatorAPYBps
+    targetAlloc
+    positionAssets
+    riskScoreBps
+    stabilityEMA
+    cachedLiquidityBps
+    allocatorReadSucceeded
+    source
+    trigger
+    blockNumber
+    timestamp
+  }
+}
+```
+
+APY fields are basis points (`520` = `5.20%`); USDC amounts have six decimals.
+Deploy a new version and reindex to populate observations from past events.

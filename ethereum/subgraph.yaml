@@ -60,6 +60,8 @@ dataSources:
       entities:
         - UpkeepAction
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: VaultUpkeep
           file: ./abis/VaultUpkeep.json
       eventHandlers:
@@ -88,6 +90,8 @@ dataSources:
       entities:
         - OracleRegistryEvent
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: GlobalConfig
           file: ./abis/GlobalConfig.json
         - name: PriceOracleMiddleware
@@ -131,6 +135,8 @@ dataSources:
         - OpsSplitParamsEvent
         - OpsAddressUpdateEvent
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: OpsCollector
           file: ./abis/OpsCollector.json
       eventHandlers:
@@ -163,6 +169,8 @@ dataSources:
         - FeeDistributorGuardrailsEvent
         - FeeDistributorPayoutUpdateEvent
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: FeeDistributor
           file: ./abis/FeeDistributor.json
       eventHandlers:
@@ -198,6 +206,8 @@ dataSources:
         - EpochRootPublishedEvent
         - EpochClaimedEvent
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: EpochPayout
           file: ./abis/EpochPayout.json
       eventHandlers:
@@ -223,6 +233,8 @@ dataSources:
         - ReferralBoundEvent
         - RouterAuthorizationEvent
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: ReferralBinding
           file: ./abis/ReferralBinding.json
       eventHandlers:
@@ -247,6 +259,8 @@ dataSources:
       entities:
         - PartnerEvent
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: PartnerRegistry
           file: ./abis/PartnerRegistry.json
       eventHandlers:
@@ -274,6 +288,8 @@ dataSources:
         - DepositWithReferralEvent
         - ReferralBindingSkippedEvent
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: DepositRouter
           file: ./abis/DepositRouter.json
       eventHandlers:
@@ -298,6 +314,8 @@ dataSources:
       entities:
         - PeripheryUpkeepEvent
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: PeripheryUpkeepAdapter
           file: ./abis/PeripheryUpkeepAdapter.json
       eventHandlers:
@@ -322,6 +340,8 @@ dataSources:
         - ClaimSettlementUpkeepEvent
         - UpkeepAction
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: ClaimSettlementUpkeep
           file: ./abis/ClaimSettlementUpkeep.json
       eventHandlers:
@@ -355,9 +375,17 @@ dataSources:
         - StrategyUpkeepBinding
         - StrategyDeployment
       abis:
+        - name: Strategy
+          file: ./abis/Strategy.json
+        - name: AdapterRates
+          file: ./abis/AdapterRates.json
+        - name: Vault
+          file: ./abis/Vault.json
         - name: StrategyUpkeep
           file: ./abis/StrategyUpkeep.json
       eventHandlers:
+        - event: ExternalTVLPoked(indexed address)
+          handler: handleScoringInputsPoked
         - event: UpkeepPerformed(indexed uint8,indexed address,uint256)
           handler: handleStrategyUpkeepPerformed
         - event: UpkeepErrored(indexed uint8,indexed address,bytes)
@@ -386,6 +414,8 @@ dataSources:
         - UpkeepAction
         - ProtocolDeployment
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: FeeCollectorUpkeep
           file: ./abis/FeeCollectorUpkeep.json
       eventHandlers:
@@ -410,6 +440,8 @@ dataSources:
       entities:
         - ReconcileEvent
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: IncentivesEngine
           file: ./abis/IncentivesEngine.json
       eventHandlers:
@@ -842,9 +874,21 @@ templates:
       entities:
         - AdapterBinding
       abis:
+        - name: AdapterRates
+          file: ./abis/AdapterRates.json
+        - name: Vault
+          file: ./abis/Vault.json
         - name: Strategy
           file: ./abis/Strategy.json
       eventHandlers:
+        - event: Harvest(uint256,uint256)
+          handler: handleStrategyAssetsChanged
+        - event: EmergencyRecalled(uint256)
+          handler: handleStrategyAssetsChanged
+        - event: SelectiveRecallExecuted(address[],uint256)
+          handler: handleStrategyAssetsChanged
+        - event: LiquidityRealized(uint256,uint256)
+          handler: handleStrategyAssetsChanged
         - event: AdapterAdded(indexed address)
           handler: handleAdapterAdded
         - event: AdapterToggled(indexed address,bool)
@@ -908,11 +952,19 @@ templates:
         - VaultStrategy
         - StrategyRoute
       abis:
+        - name: AdapterRates
+          file: ./abis/AdapterRates.json
+        - name: Vault
+          file: ./abis/Vault.json
         - name: StrategyRouter
           file: ./abis/StrategyRouter.json
         - name: Strategy
           file: ./abis/Strategy.json
       eventHandlers:
+        - event: StrategyDepositSuccess(indexed address,uint256)
+          handler: handleRouterStrategyAssetsChanged
+        - event: StrategyRedeemSuccess(indexed address,uint256,uint256)
+          handler: handleRouterStrategyAssetsChanged
         - event: StrategyRegistered(indexed address,uint16,uint16)
           handler: handleStrategyRegistered
         - event: StrategyToggled(indexed address,bool)
@@ -964,6 +1016,8 @@ templates:
         - RewardVestingTranche
         - IncentiveParamsSet
       abis:
+        - name: Vault
+          file: ./abis/Vault.json
         - name: IncentivesEngine
           file: ./abis/IncentivesEngine.json
       eventHandlers:

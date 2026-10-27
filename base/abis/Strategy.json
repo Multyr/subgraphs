@@ -932,6 +932,30 @@
   },
   {
     "type": "function",
+    "name": "depositGasObservation",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "count",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "updatedAt",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "depositModeKnown",
     "inputs": [
       {
@@ -1248,7 +1272,18 @@
     "type": "function",
     "name": "harvest",
     "inputs": [],
-    "outputs": [],
+    "outputs": [
+      {
+        "name": "pnl",
+        "type": "int256",
+        "internalType": "int256"
+      },
+      {
+        "name": "realized",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
     "stateMutability": "nonpayable"
   },
   {
@@ -2057,6 +2092,19 @@
   },
   {
     "type": "function",
+    "name": "rebalanceGasEstimator",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "rebalanceGateModule_addr",
     "inputs": [],
     "outputs": [
@@ -2634,6 +2682,19 @@
   },
   {
     "type": "function",
+    "name": "targetIdleBufferBps",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "targetSafetyMarginBps",
     "inputs": [],
     "outputs": [
@@ -2819,6 +2880,49 @@
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdrawAll",
+    "inputs": [
+      {
+        "name": "receiver",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "withdrawn",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdrawGasObservation",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "count",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "updatedAt",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -3582,6 +3686,31 @@
   },
   {
     "type": "event",
+    "name": "ExecutionGasObserved",
+    "inputs": [
+      {
+        "name": "adapter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "gasUsed",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "deposit",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ExternalTVLPoked",
     "inputs": [
       {
@@ -4154,6 +4283,118 @@
   },
   {
     "type": "event",
+    "name": "RebalanceDepositSkipped",
+    "inputs": [
+      {
+        "name": "adapter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RebalanceEconomicsEvaluated",
+    "inputs": [
+      {
+        "name": "movedUSDC",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "grossBenefitUSDC",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "gasCostUSDC",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "netBenefitBps",
+        "type": "int256",
+        "indexed": false,
+        "internalType": "int256"
+      },
+      {
+        "name": "accepted",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RebalanceEconomicsInvalidated",
+    "inputs": [],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RebalanceGasEstimatorSet",
+    "inputs": [
+      {
+        "name": "estimator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RebalanceGasEvaluated",
+    "inputs": [
+      {
+        "name": "actionsHash",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "costUSDC",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "l2Gas",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "posterWei",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "reliable",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "RebalanceGateModuleSet",
     "inputs": [
       {
@@ -4381,6 +4622,49 @@
         "type": "address",
         "indexed": true,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RebalanceScores",
+    "inputs": [
+      {
+        "name": "actionsHash",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "adapters",
+        "type": "address[]",
+        "indexed": false,
+        "internalType": "address[]"
+      },
+      {
+        "name": "normalizedScores",
+        "type": "uint256[]",
+        "indexed": false,
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "apyBps",
+        "type": "uint16[]",
+        "indexed": false,
+        "internalType": "uint16[]"
+      },
+      {
+        "name": "targetAssets",
+        "type": "uint256[]",
+        "indexed": false,
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "tvl",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -4933,6 +5217,25 @@
   },
   {
     "type": "event",
+    "name": "TargetIdleBufferUpdated",
+    "inputs": [
+      {
+        "name": "previousBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "nextBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "TargetSafetyMarginUpdated",
     "inputs": [
       {
@@ -5040,6 +5343,11 @@
   {
     "type": "error",
     "name": "NoCashInvariant",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Overflow",
     "inputs": []
   },
   {
@@ -5370,6 +5678,11 @@
         "name": "moved",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "normScores",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
       }
     ],
     "stateMutability": "nonpayable"
@@ -5617,6 +5930,60 @@
   },
   {
     "type": "function",
+    "name": "checkCandidateGate",
+    "inputs": [
+      {
+        "name": "apys",
+        "type": "uint16[]",
+        "internalType": "uint16[]"
+      },
+      {
+        "name": "list",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "targets",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "scores",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "tvl",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "moved",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "pass",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "benefit",
+        "type": "int256",
+        "internalType": "int256"
+      },
+      {
+        "name": "safety",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "checkGate",
     "inputs": [
       {
@@ -5660,9 +6027,94 @@
     "stateMutability": "nonpayable"
   },
   {
-    "type": "error",
-    "name": "Overflow",
-    "inputs": []
+    "type": "function",
+    "name": "checkRemainingPlan",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "previewRebalanceGas",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "actions",
+        "type": "tuple[]",
+        "internalType": "struct ReadOnlyGasEstimator.Action[]",
+        "components": [
+          {
+            "name": "adapter",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "amount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "deposit",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
+      },
+      {
+        "name": "quote",
+        "type": "tuple",
+        "internalType": "struct ReadOnlyGasEstimator.Quote",
+        "components": [
+          {
+            "name": "actionsHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "costUSDC",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "l2Gas",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "posterWei",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "executionWei",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "txCount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "reliable",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "usedDefaults",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -6227,6 +6679,19 @@
   },
   {
     "type": "function",
+    "name": "setRebalanceGasEstimator",
+    "inputs": [
+      {
+        "name": "estimator",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setRebalanceParams",
     "inputs": [
       {
@@ -6484,6 +6949,19 @@
         "name": "_interval",
         "type": "uint32",
         "internalType": "uint32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setTargetIdleBufferBps",
+    "inputs": [
+      {
+        "name": "bps",
+        "type": "uint16",
+        "internalType": "uint16"
       }
     ],
     "outputs": [],
@@ -7032,6 +7510,35 @@
         "name": "",
         "type": "uint256[]",
         "internalType": "uint256[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "validateRebalanceDeposit",
+    "inputs": [
+      {
+        "name": "adapter",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "projected",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "tvl",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"

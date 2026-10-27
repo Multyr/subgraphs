@@ -18,7 +18,7 @@
     "build:arb": "cd arbitrum && graph build",
     "test:arb": "cd arbitrum && graph test --version 0.6.0",
     "test:coverage:arb": "cd arbitrum && graph test --coverage --version 0.6.0",
-    "deploy:arb": "cd arbitrum && graph deploy --studio multyr-arb",
+    "deploy:arb": "cd arbitrum && graph deploy --studio multyr-subgraph",
     "codegen:base": "cd base && graph codegen",
     "build:base": "cd base && graph build",
     "test:base": "cd base && graph test --version 0.6.0",

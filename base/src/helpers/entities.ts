@@ -11,9 +11,11 @@ import {
   User,
   ProtocolDeployment,
   VaultDeployment,
-  StrategyDeployment
+  StrategyDeployment,
+  StrategyUpkeepLookup
 } from "../../generated/schema"
 import { Vault as VaultContract } from "../../generated/templates/VaultTemplate/Vault"
+import { Strategy as StrategyContract } from "../../generated/templates/StrategyTemplate/Strategy"
 import { ERC20 } from "../../generated/templates/VaultTemplate/ERC20"
 import {
   ZERO_BI,
@@ -218,6 +220,10 @@ export function refreshVaultState(vault: Vault, block: ethereum.Block): void {
   let contract = VaultContract.bind(Address.fromBytes(vault.address))
   let chainId = vault.chainId
 
+  // Refresh liabilities at the same block as NAV, including ordinary deposits/harvests.
+  refreshLiabilityState(vault)
+  syncVaultDeploymentFromVault(vault, block)
+
   // Fetch current state
   let totalAssetsResult = contract.try_totalAssets()
   let totalSupplyResult = contract.try_totalSupply()
@@ -248,10 +254,17 @@ export function refreshVaultState(vault: Vault, block: ethereum.Block): void {
 /**
  * Refresh the economic-exit liability state (grossAssets / totalOwed /
  * liabilityIndex / isInsolvent). Called from the queue, claim and solvency
- * handlers only; caller saves the vault.
+ * handlers and every NAV refresh; caller saves the vault.
  */
 export function refreshLiabilityState(vault: Vault): void {
   let contract = VaultContract.bind(Address.fromBytes(vault.address))
+
+  // Queue events can change active NAV too. Never leave net NAV at an older block.
+  let assets = contract.try_totalAssets()
+  let supply = contract.try_totalSupply()
+  updateVaultSharePriceCanonical(vault,
+    assets.reverted ? vault.totalAssets : assets.value,
+    supply.reverted ? vault.totalSupply : supply.value)
 
   let gross = contract.try_grossAssets()
   if (!gross.reverted) vault.grossAssets = gross.value
@@ -764,6 +777,15 @@ export function getOrCreateVaultDeployment(vault: Vault, block: ethereum.Block):
     vd.updatedAt = block.timestamp
     vd.updatedAtBlock = block.number
   }
+  // Deployment/setup events may precede template activation or be absent entirely.
+  // Read representative routed selectors and params at the indexed block.
+  let contract = VaultContract.bind(Address.fromBytes(vault.address))
+  let queue = contract.try_moduleOf(Bytes.fromHexString("0xeacdc5ff")) // currentEpochId()
+  if (!queue.reverted && queue.value.notEqual(Address.zero())) vd.queueModule = queue.value
+  let admin = contract.try_moduleOf(Bytes.fromHexString("0x4e49acac")) // setParams(address)
+  if (!admin.reverted && admin.value.notEqual(Address.zero())) vd.adminModule = admin.value
+  let params = contract.try_params()
+  if (!params.reverted && params.value.notEqual(Address.zero())) vd.paramsProvider = params.value
   return vd
 }
 
@@ -801,10 +823,22 @@ export function getOrCreateStrategyDeployment(
     sd.priority = 0
     sd.weightBps = 0
     sd.totalAssets = ZERO_BI
-    sd.strategyUpkeep = null
-    sd.upkeepKind = null
+    let upkeepLookup = StrategyUpkeepLookup.load(strategyAddress.toHexString().toLowerCase() + "-" + vault.chainId.toString())
+    sd.strategyUpkeep = upkeepLookup === null ? null : upkeepLookup.upkeep
+    sd.upkeepKind = upkeepLookup === null ? null : "lending"
     sd.updatedAt = block.timestamp
     sd.updatedAtBlock = block.number
   }
   return sd
+}
+
+// Refresh from the contract at the indexed event block, never from transfer deltas.
+// A reverted read preserves both the last good balance and its freshness markers.
+export function refreshStrategyDeploymentAssets(sd: StrategyDeployment, block: ethereum.Block): void {
+  let result = StrategyContract.bind(Address.fromBytes(sd.strategyAddress)).try_totalAssets()
+  if (result.reverted) return
+  sd.totalAssets = result.value
+  sd.updatedAt = block.timestamp
+  sd.updatedAtBlock = block.number
+  sd.save()
 }
