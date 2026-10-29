@@ -2072,6 +2072,20 @@ type GasEmaSnapshot @entity {
   updatedAtTimestamp: BigInt!
 }
 
+# Stable cursor keyed by strategy address and chain, independent of transaction/core reads.
+type ActiveRebalancePlan @entity {
+  id: ID!
+  plan: RebalancePlan!
+}
+
+# Events whose plan creation is missing are retained, never assigned to a fabricated plan.
+type RebalanceLifecycleIssue @entity {
+  id: ID!
+  strategyAddress: Bytes!
+  kind: String!
+  blockNumber: BigInt!
+}
+
 # Rebalance plan lifecycle. ID: "{txHash}-{logIndex}" of RebalancePlanCreated
 type RebalancePlan @entity {
   id: ID!

@@ -402,6 +402,8 @@ import {
   StabilityUpdateEvent,
   GasEmaSnapshot,
   RebalancePlan,
+  ActiveRebalancePlan,
+  RebalanceLifecycleIssue,
   RebalanceStep,
   AdapterSkipEvent,
   AdapterFailureEvent,
@@ -5443,14 +5445,30 @@ export function handleGasEmaUpdated(event: GasEmaUpdatedEvent): void {
   snap.save()
 }
 
+function activePlanKey(event: ethereum.Event): string {
+  return event.address.toHexString().toLowerCase() + "-" + getChainIdFromNetwork(dataSource.network()).toString()
+}
+
+function findActivePlan(event: ethereum.Event, kind: string): RebalancePlan | null {
+  let cursor = ActiveRebalancePlan.load(activePlanKey(event))
+  if (cursor != null) {
+    let plan = RebalancePlan.load(cursor.plan)
+    if (plan != null && plan.status == "CREATED") return plan
+  }
+  let issue = new RebalanceLifecycleIssue(event.transaction.hash.toHexString() + "-" + event.logIndex.toString())
+  issue.strategyAddress = event.address
+  issue.kind = kind
+  issue.blockNumber = event.block.number
+  issue.save()
+  return null
+}
+
 export function handleRebalancePlanCreated(event: RebalancePlanCreatedEvent): void {
   let chainId = getChainIdFromNetwork(dataSource.network())
-  let sdId = strategyDeploymentId(event.address, chainId)
   let planId = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
-
   let plan = new RebalancePlan(planId)
   plan.chainId = chainId
-  plan.strategy = sdId
+  plan.strategy = strategyDeploymentId(event.address, chainId)
   plan.actionCount = event.params.actionCount
   plan.totalMoved = event.params.totalMoved
   plan.tvlSnapshot = event.params.tvlSnapshot
@@ -5458,84 +5476,54 @@ export function handleRebalancePlanCreated(event: RebalancePlanCreatedEvent): vo
   plan.createdAtBlock = event.block.number
   plan.createdAtTimestamp = event.block.timestamp
   plan.save()
+  let cursor = new ActiveRebalancePlan(activePlanKey(event))
+  cursor.plan = planId
+  cursor.save()
 }
-
-// Resolve most-recent RebalancePlan for a strategy by scanning from this tx.
-// Graph Node doesn't support queries in mappings; we use a "latest plan per strategy"
-// convention via a synthetic singleton id. Instead, we attach steps to the
-// latest plan id stored on StrategyDeployment via updatedAtBlock heuristic.
-// To keep it simple: RebalanceStep.plan = last RebalancePlanCreated id in SAME tx (guaranteed adjacent).
-// Since graph-node provides no reverse lookup, we emit steps with plan = null if none seen yet in tx.
-// Simpler approach: link step to plan by the same-tx assumption (steps follow created in same tx).
-// Given AssemblyScript limits, we derive the "latest plan id" from a helper entity.
-
-// For Option B+ we use StrategyDeployment field lastRebalancePlanId (added below as transient via ScoringSnapshot? no)
-// Solution: introduce a minimal transient helper — store last plan id on StrategyHealthFlag (reused).
 
 export function handleRebalanceStepExecuted(event: RebalanceStepExecutedEvent): void {
   refreshStrategyAssets(event.address, event)
-  let chainId = getChainIdFromNetwork(dataSource.network())
-  let sdId = strategyDeploymentId(event.address, chainId)
-  let stepId = event.transaction.hash.toHex() + "-" + event.logIndex.toString()
-
-  // Best-effort: find the RebalancePlan in SAME tx by scanning logIndex backwards is impossible in AS.
-  // Use convention: plan id = txHash + "-0" is NOT valid (logIndex varies).
-  // Instead, store the last plan id via StrategyHealthFlag.lastRebalancePlanId (informational field).
-  // For now, create the step with a synthetic plan id matching the strategy + tx — acceptable fallback.
-  // The subgraph clients can correlate plan+steps via the tx hash prefix.
-  let fallbackPlanId = event.transaction.hash.toHex() + "-plan-" + sdId
-  let plan = RebalancePlan.load(fallbackPlanId)
-  if (plan == null) {
-    // Create an orphan plan marker so the step has a valid FK
-    plan = new RebalancePlan(fallbackPlanId)
-    plan.chainId = chainId
-    plan.strategy = sdId
-    plan.actionCount = 0
-    plan.totalMoved = ZERO_BI
-    plan.tvlSnapshot = ZERO_BI
-    plan.status = "CREATED"
-    plan.createdAtBlock = event.block.number
-    plan.createdAtTimestamp = event.block.timestamp
-    plan.save()
-  }
-
-  let step = new RebalanceStep(stepId)
-  step.chainId = chainId
-  step.plan = fallbackPlanId
+  let plan = findActivePlan(event, "STEP_WITHOUT_ACTIVE_PLAN")
+  if (plan == null) return
+  let step = new RebalanceStep(event.transaction.hash.toHex() + "-" + event.logIndex.toString())
+  step.chainId = getChainIdFromNetwork(dataSource.network())
+  step.plan = plan.id
   step.fromAction = event.params.fromAction
   step.toAction = event.params.toAction
   step.blockNumber = event.block.number
   step.timestamp = event.block.timestamp
   step.save()
+  // Deployed planner emits an exclusive end index, then finalizes atomically.
+  // Reverted transactions have no logs; this is completion, not a profitability claim.
+  if (plan.actionCount > 0 && event.params.toAction >= plan.actionCount) {
+    plan.status = "EXECUTED"
+    plan.settledAtBlock = event.block.number
+    plan.settledAtTimestamp = event.block.timestamp
+    plan.save()
+    store.remove("ActiveRebalancePlan", activePlanKey(event))
+  }
 }
 
 export function handleRebalancePlanCancelled(event: RebalancePlanCancelledEvent): void {
-  // Status change on the most-recent plan — best-effort via tx-synthesized id
-  let chainId = getChainIdFromNetwork(dataSource.network())
-  let sdId = strategyDeploymentId(event.address, chainId)
-  let fallbackPlanId = event.transaction.hash.toHex() + "-plan-" + sdId
-  let plan = RebalancePlan.load(fallbackPlanId)
-  if (plan != null) {
-    plan.status = "CANCELLED"
-    plan.settledAtBlock = event.block.number
-    plan.settledAtTimestamp = event.block.timestamp
-    plan.save()
-  }
+  let plan = findActivePlan(event, "CANCEL_WITHOUT_ACTIVE_PLAN")
+  if (plan == null) return
+  plan.status = "CANCELLED"
+  plan.settledAtBlock = event.block.number
+  plan.settledAtTimestamp = event.block.timestamp
+  plan.save()
+  store.remove("ActiveRebalancePlan", activePlanKey(event))
 }
 
 export function handleRebalancePlanInvalidated(event: RebalancePlanInvalidatedEvent): void {
-  let chainId = getChainIdFromNetwork(dataSource.network())
-  let sdId = strategyDeploymentId(event.address, chainId)
-  let fallbackPlanId = event.transaction.hash.toHex() + "-plan-" + sdId
-  let plan = RebalancePlan.load(fallbackPlanId)
-  if (plan != null) {
-    plan.status = "INVALIDATED"
-    plan.invalidationPlanTvl = event.params.planTvl
-    plan.invalidationCurrentTvl = event.params.currentTvl
-    plan.settledAtBlock = event.block.number
-    plan.settledAtTimestamp = event.block.timestamp
-    plan.save()
-  }
+  let plan = findActivePlan(event, "INVALIDATION_WITHOUT_ACTIVE_PLAN")
+  if (plan == null) return
+  plan.status = "INVALIDATED"
+  plan.invalidationPlanTvl = event.params.planTvl
+  plan.invalidationCurrentTvl = event.params.currentTvl
+  plan.settledAtBlock = event.block.number
+  plan.settledAtTimestamp = event.block.timestamp
+  plan.save()
+  store.remove("ActiveRebalancePlan", activePlanKey(event))
 }
 
 function saveAdapterSkip(
