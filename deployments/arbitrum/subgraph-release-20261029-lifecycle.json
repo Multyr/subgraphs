@@ -1,0 +1,19 @@
+{
+  "version": "v3.6.2-rebalance-lifecycle-20261029",
+  "deployment": "QmNeEnuDySa3RnqmX2y858LVg8sFpReWeVPxEkxjLtE7Be",
+  "sourceCommit": "c665c959c389d2a8dad75d33e469e1f02952ebbd",
+  "tag": "subgraph-rebalance-lifecycle-20261029",
+  "pr": "https://github.com/Multyr/subgraphs/pull/4",
+  "queryUrl": "https://api.studio.thegraph.com/query/1758013/multyr-subgraph/v3.6.2-rebalance-lifecycle-20261029",
+  "tests": {
+    "codegen": "PASS",
+    "build": "PASS",
+    "matchstickPassed": 39,
+    "lifecycleRegressions": 6
+  },
+  "status": "STUDIO_DEPLOYED_REINDEXED_09_VERIFIED",
+  "networkPublication": "Not claimed; Studio version deployment is distinct from Graph Network publication",
+  "lending15": "UNDEPLOYED_EXCLUDED",
+  "clockStarted": false,
+  "verificationCapturedAt": "2026-10-29T00:32:42.850Z"
+}
