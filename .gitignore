@@ -10,3 +10,6 @@ generated/
 */tests/.latest.json
 tests/.bin/
 tests/.latest.json
+.env.*
+!.env.example
+!.env.shadow.example
